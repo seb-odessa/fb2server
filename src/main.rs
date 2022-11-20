@@ -18,13 +18,13 @@ const XML_HEAD: &'static str = r#"xml version="1.0" encoding="utf-8""#;
 
 // #[derive(Clone)]
 struct AppState {
-    counter: Mutex<i32>, // <- Mutex is necessary to mutate safely across threads
+    // counter: Mutex<i32>,
     pool: Mutex<SqlitePool>,
 }
 impl AppState {
     pub fn new(pool: SqlitePool) -> Self {
         Self {
-            counter: Mutex::new(0),
+            // counter: Mutex::new(0),
             pool: Mutex::new(pool),
         }
     }
@@ -112,60 +112,6 @@ fn sorted(mut patterns: Vec<String>) -> Vec<String> {
     return patterns;
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_sorted_1() {
-        let vec = vec![String::from("b"), String::from("a")];
-        let exp = vec![String::from("a"), String::from("b")];
-        assert_eq!(sorted(vec), exp);
-    }
-
-    #[test]
-    fn test_sorted_2() {
-        let vec = vec![String::from("ab"), String::from("aa")];
-        let exp = vec![String::from("aa"), String::from("ab")];
-        assert_eq!(sorted(vec), exp);
-    }
-
-    #[test]
-    fn test_sorted_cyr_and_ascii_1() {
-        let vec = vec![String::from("a"), String::from("я")];
-        let exp = vec![String::from("я"), String::from("a")];
-        assert_eq!(sorted(vec), exp);
-    }
-
-    #[test]
-    fn test_sorted_cyr_and_ascii_2() {
-        let vec = vec![String::from("aя"), String::from("яя")];
-        let exp = vec![String::from("яя"), String::from("aя")];
-        assert_eq!(sorted(vec), exp);
-    }
-
-    #[test]
-    fn test_sorted_cyr_lc() {
-        let vec = vec![String::from("яя"), String::from("ая")];
-        let exp = vec![String::from("ая"), String::from("яя")];
-        assert_eq!(sorted(vec), exp);
-    }
-
-    #[test]
-    fn test_sorted_cyr_uc() {
-        let vec = vec![String::from("ЫЫ"), String::from("АЫ")];
-        let exp = vec![String::from("АЫ"), String::from("ЫЫ")];
-        assert_eq!(sorted(vec), exp);
-    }
-
-    #[test]
-    fn test_sorted_cyr_mc() {
-        let vec = vec![String::from("Ыа"), String::from("АЫ")];
-        let exp = vec![String::from("АЫ"), String::from("Ыа")];
-        assert_eq!(sorted(vec), exp);
-    }
-}
-
 #[get("/opds/authors")]
 async fn authors_root(ctx: web::Data<AppState>) -> impl Responder {
     info!("/opds/authors");
@@ -188,7 +134,7 @@ async fn authors_root(ctx: web::Data<AppState>) -> impl Responder {
 }
 
 #[get("/opds/authors/{pattern}")]
-async fn authors(ctx: web::Data<AppState>, path: web::Path<String>) -> impl Responder {
+async fn authors_by_mask(ctx: web::Data<AppState>, path: web::Path<String>) -> impl Responder {
     let pattern = path.into_inner();
     info!("/opds/authors/{pattern}");
 
@@ -203,14 +149,31 @@ async fn authors(ctx: web::Data<AppState>, path: web::Path<String>) -> impl Resp
             }
 
             for prefix in sorted(patterns) {
-                if pattern.eq(&prefix) {
-                    continue;
+                if pattern.ne(&prefix) {
+                    feed.add(
+                        format!("Авторы на '{prefix}'"),
+                        format!("/opds/authors/{prefix}"),
+                    );
                 }
-                println!("<{pattern}> ne <{prefix}>");
+            }
+            format_feed(feed)
+        }
+        Err(err) => format!("{err}"),
+    }
+}
 
+#[get("/opds/author/{id}")]
+async fn authors_by_id(ctx: web::Data<AppState>, path: web::Path<u32>) -> impl Responder {
+    let id = path.into_inner();
+    info!("/opds/authors/{id}");
+
+    match find_authors(ctx.clone(), id).await {
+        Ok(authors) => {
+            let mut feed = Feed::new("Поиск книг по авторам");
+            for author in authors {
                 feed.add(
-                    format!("Авторы на '{prefix}'"),
-                    format!("/opds/authors/{prefix}"),
+                    format!("{} {} {}", author.first_name, author.middle_name, author.last_name),
+                    format!("/opds/author/{}/{}/{}", author.first_id, author.middle_id, author.last_id),
                 );
             }
             format_feed(feed)
@@ -235,7 +198,8 @@ async fn main() -> anyhow::Result<()> {
             .app_data(ctx.clone())
             .service(opds)
             .service(authors_root)
-            .service(authors)
+            .service(authors_by_mask)
+            .service(authors_by_id)
     })
     .bind((addr.as_str(), port))?
     .run()
@@ -320,14 +284,14 @@ fn make_feed(feed: Feed) -> anyhow::Result<String> {
 }
 
 async fn get_last_name_id(ctx: web::Data<AppState>, name: &String) -> anyhow::Result<u32> {
-    let pool = ctx.pool.try_lock().unwrap();
     let sql = format!(
         r#"
             SELECT id 
             FROM last_names 
-            WHERE last_name = "{name}"
-            "#
+            WHERE name = "{name}"
+        "#
     );
+    let pool = ctx.pool.try_lock().unwrap();
     let row = sqlx::query(&sql).fetch_one(&*pool).await?;
     let id: u32 = row.try_get("id")?;
 
@@ -335,20 +299,17 @@ async fn get_last_name_id(ctx: web::Data<AppState>, name: &String) -> anyhow::Re
 }
 
 async fn make_patterns(ctx: web::Data<AppState>, pattern: String) -> anyhow::Result<Vec<String>> {
-    let mut counter = ctx.counter.lock().unwrap(); // <- get counter's MutexGuard
-    *counter += 1;
-
-    let pool = ctx.pool.lock().unwrap();
     let len = pattern.chars().count() + 1;
     let sql = format!(
         r#"
-            SELECT DISTINCT substr(last_name, 1, {len}) AS name 
+            SELECT DISTINCT substr(name, 1, {len}) AS name 
             FROM last_names 
-            WHERE last_name LIKE "{pattern}%"
+            WHERE name LIKE "{pattern}%"
             ORDER BY 1
-            "#
+        "#
     );
 
+    let pool = ctx.pool.lock().unwrap();
     let rows = sqlx::query(&sql).fetch_all(&*pool).await?;
     let mut out = Vec::new();
     for row in rows {
@@ -359,10 +320,101 @@ async fn make_patterns(ctx: web::Data<AppState>, pattern: String) -> anyhow::Res
     Ok(out)
 }
 
+struct Author {
+    pub first_id: u32,
+    pub middle_id: u32,
+    pub last_id: u32,
+    pub first_name: String,
+    pub middle_name: String,
+    pub last_name: String,
+}
 
-// SELECT DISTINCT first_name_id, middle_name_id, last_name_id, first_names.first_name, middle_names.middle_name, last_names.last_name
-// FROM authors_map 
-// LEFT JOIN first_names ON first_names.id = first_name_id
-// LEFT JOIN middle_names ON middle_names.id = middle_name_id
-// LEFT JOIN last_names ON last_names.id = last_name_id
-// WHERE last_name_id = 9604
+async fn find_authors(ctx: web::Data<AppState>, id: u32) -> anyhow::Result<Vec<Author>> {
+    let sql = format!(
+        r#"
+            SELECT DISTINCT 
+                first_name_id AS first_id, 
+                middle_name_id AS middle_id, 
+                last_name_id AS last_id, 
+                first_names.name AS first_name, 
+                middle_names.name AS middle_name, 
+                last_names.name AS last_name
+            FROM authors_map
+            LEFT JOIN first_names ON first_names.id = first_name_id
+            LEFT JOIN middle_names ON middle_names.id = middle_name_id
+            LEFT JOIN last_names ON last_names.id = last_name_id
+            WHERE last_name_id = {id}
+        "#
+    );
+
+    let pool = ctx.pool.lock().unwrap();
+    let rows = sqlx::query(&sql).fetch_all(&*pool).await?;
+    let mut out = Vec::new();
+    for row in rows {
+        out.push(Author {
+            first_id: row.try_get("first_id")?,
+            middle_id: row.try_get("middle_id")?,
+            last_id: row.try_get("last_id")?,
+            first_name: row.try_get("first_name")?,
+            middle_name: row.try_get("middle_name")?,
+            last_name: row.try_get("last_name")?,
+        });
+    }
+
+    Ok(out)
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_sorted_1() {
+        let vec = vec![String::from("b"), String::from("a")];
+        let exp = vec![String::from("a"), String::from("b")];
+        assert_eq!(sorted(vec), exp);
+    }
+
+    #[test]
+    fn test_sorted_2() {
+        let vec = vec![String::from("ab"), String::from("aa")];
+        let exp = vec![String::from("aa"), String::from("ab")];
+        assert_eq!(sorted(vec), exp);
+    }
+
+    #[test]
+    fn test_sorted_cyr_and_ascii_1() {
+        let vec = vec![String::from("a"), String::from("я")];
+        let exp = vec![String::from("я"), String::from("a")];
+        assert_eq!(sorted(vec), exp);
+    }
+
+    #[test]
+    fn test_sorted_cyr_and_ascii_2() {
+        let vec = vec![String::from("aя"), String::from("яя")];
+        let exp = vec![String::from("яя"), String::from("aя")];
+        assert_eq!(sorted(vec), exp);
+    }
+
+    #[test]
+    fn test_sorted_cyr_lc() {
+        let vec = vec![String::from("яя"), String::from("ая")];
+        let exp = vec![String::from("ая"), String::from("яя")];
+        assert_eq!(sorted(vec), exp);
+    }
+
+    #[test]
+    fn test_sorted_cyr_uc() {
+        let vec = vec![String::from("ЫЫ"), String::from("АЫ")];
+        let exp = vec![String::from("АЫ"), String::from("ЫЫ")];
+        assert_eq!(sorted(vec), exp);
+    }
+
+    #[test]
+    fn test_sorted_cyr_mc() {
+        let vec = vec![String::from("Ыа"), String::from("АЫ")];
+        let exp = vec![String::from("АЫ"), String::from("Ыа")];
+        assert_eq!(sorted(vec), exp);
+    }
+}
