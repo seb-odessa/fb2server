@@ -3,6 +3,13 @@ name = "fb2server"
 version = "0.1.0"
 edition = "2021"
 
+[lib]
+name = "lib"
+path = "src/lib/lib.rs"
+
+[[bin]]
+name = "fb2server"
+path = "src/bin/main.rs"
 
 [dependencies]
     anyhow = "1.0"
