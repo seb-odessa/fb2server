@@ -10,6 +10,12 @@ pub struct Author {
     pub last_name: String,
 }
 
+pub struct Serie {
+    pub id: u32,
+    pub name: String,
+    pub count: u32,
+}
+
 pub async fn make_patterns(pool: &SqlitePool, pattern: &String) -> anyhow::Result<Vec<String>> {
     let len = pattern.chars().count() + 1;
     let sql = format!(
@@ -17,7 +23,7 @@ pub async fn make_patterns(pool: &SqlitePool, pattern: &String) -> anyhow::Resul
             SELECT DISTINCT substr(value, 1, {len}) AS name
             FROM last_names
             WHERE value LIKE "{pattern}%"
-            ORDER BY 1
+            -- ORDER BY 1
         "#
     );
 
@@ -46,7 +52,7 @@ pub async fn find_authors(pool: &SqlitePool, name: &String) -> anyhow::Result<Ve
             LEFT JOIN middle_names ON middle_names.id = middle_name_id
             LEFT JOIN last_names ON last_names.id = last_name_id
             WHERE last_names.value = "{name}"
-            ORDER BY 4, 5, 6;
+            -- ORDER BY 4, 5, 6;
         "#
     );
 
@@ -65,6 +71,64 @@ pub async fn find_authors(pool: &SqlitePool, name: &String) -> anyhow::Result<Ve
 
     Ok(out)
 }
+
+
+pub async fn author(pool: &SqlitePool, ids: (u32, u32, u32)) -> anyhow::Result<String> {
+    let (fid, mid, lid) = ids;
+    let sql = format!(
+        r#"
+        SELECT 
+	        first_names.value || ' ' ||
+	        middle_names.value || ' ' ||
+	        last_names.value AS author
+        FROM first_names, middle_names, last_names
+        WHERE first_names.id = {fid}
+            AND middle_names.id = {mid}
+	        AND last_names.id = {lid}
+        "#);
+
+    let row = sqlx::query(&sql).fetch_one(&*pool).await?;
+    Ok(row.try_get("author")?)
+}
+
+
+pub async fn author_series(pool: &SqlitePool, ids: (u32, u32, u32)) -> anyhow::Result<Vec<Serie>> {
+    let (fid, mid, lid) = ids;
+    let sql = format!(
+        r#"
+        SELECT 
+            series.id AS id,
+            series.value AS name,
+            count(series.value) as count
+        FROM authors_map
+        LEFT JOIN books ON authors_map.book_id = books.book_id
+        LEFT JOIN titles ON books.title_id = titles.id
+        LEFT JOIN series_map ON  books.book_id = series_map.book_id
+        LEFT JOIN series ON series_map.serie_id = series.id
+        LEFT JOIN dates ON  books.date_id = dates.id
+        WHERE
+        first_name_id = {fid}
+        AND middle_name_id = {mid}
+        AND last_name_id = {lid}
+        AND name IS NOT NULL
+        GROUP by 1, 2
+        -- ORDER BY 1;
+        "#
+    );
+
+    let rows = sqlx::query(&sql).fetch_all(&*pool).await?;
+    let mut out = Vec::new();
+    for row in rows {
+        out.push(Serie {
+            id: row.try_get("id")?,
+            name: row.try_get("name")?,
+            count: row.try_get("count")?,
+        });
+    }
+
+    Ok(out)
+}
+
 
 /*
 --     EXPLAIN QUERY PLAN
