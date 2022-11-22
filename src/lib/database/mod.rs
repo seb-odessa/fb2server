@@ -16,6 +16,15 @@ pub struct Serie {
     pub count: u32,
 }
 
+pub struct SerieBooks {
+    pub id: u32,
+    pub num: u32,
+    pub name: String,
+    pub size: u32,
+    pub date: String,
+}
+
+
 pub async fn make_patterns(pool: &SqlitePool, pattern: &String) -> anyhow::Result<Vec<String>> {
     let len = pattern.chars().count() + 1;
     let sql = format!(
@@ -72,7 +81,6 @@ pub async fn find_authors(pool: &SqlitePool, name: &String) -> anyhow::Result<Ve
     Ok(out)
 }
 
-
 pub async fn author(pool: &SqlitePool, ids: (u32, u32, u32)) -> anyhow::Result<String> {
     let (fid, mid, lid) = ids;
     let sql = format!(
@@ -85,12 +93,12 @@ pub async fn author(pool: &SqlitePool, ids: (u32, u32, u32)) -> anyhow::Result<S
         WHERE first_names.id = {fid}
             AND middle_names.id = {mid}
 	        AND last_names.id = {lid}
-        "#);
+        "#
+    );
 
     let row = sqlx::query(&sql).fetch_one(&*pool).await?;
     Ok(row.try_get("author")?)
 }
-
 
 pub async fn author_series(pool: &SqlitePool, ids: (u32, u32, u32)) -> anyhow::Result<Vec<Serie>> {
     let (fid, mid, lid) = ids;
@@ -129,25 +137,68 @@ pub async fn author_series(pool: &SqlitePool, ids: (u32, u32, u32)) -> anyhow::R
     Ok(out)
 }
 
+pub async fn author_serie_books(
+    pool: &SqlitePool,
+    ids: (u32, u32, u32, u32),
+) -> anyhow::Result<Vec<SerieBooks>> {
+    let (fid, mid, lid, sid) = ids;
+    let sql = format!(
+        r#"
+        SELECT
+            books.book_id AS id,
+            series_map.serie_num AS num,
+            titles.value AS name,
+            books.book_size AS size,
+            dates.value AS added
+      FROM authors_map
+      LEFT JOIN books ON authors_map.book_id = books.book_id
+      LEFT JOIN titles ON books.title_id = titles.id
+      LEFT JOIN series_map ON  books.book_id = series_map.book_id
+      LEFT JOIN series ON series_map.serie_id = series.id
+      LEFT JOIN dates ON  books.date_id = dates.id
+      WHERE
+        first_name_id = {fid}
+        AND middle_name_id = {mid}
+        AND last_name_id = {lid}
+        AND series.id = {sid}
+      ORDER BY 5, 2;
+        "#
+    );
+    let rows = sqlx::query(&sql).fetch_all(&*pool).await?;
+    let mut out = Vec::new();
+    for row in rows {
+        out.push(SerieBooks {
+            id: row.try_get("id")?,
+            num: row.try_get("num")?,
+            name: row.try_get("name")?,
+            size: row.try_get("size")?,
+            date: row.try_get("added")?,
+        });
+    }
+
+    Ok(out)
+}
+
+
 
 /*
 --     EXPLAIN QUERY PLAN
-	SELECT DISTINCT
-	  authors_map.book_id,
-	  titles.title,
-	  dates.date,
-	  series.name,
-	  series_map.serie_num
+    SELECT DISTINCT
+      authors_map.book_id,
+      titles.title,
+      dates.date,
+      series.name,
+      series_map.serie_num
 
     FROM authors_map
-	LEFT JOIN books ON authors_map.book_id = books.id
-	LEFT JOIN titles ON books.title_id = titles.id
+    LEFT JOIN books ON authors_map.book_id = books.id
+    LEFT JOIN titles ON books.title_id = titles.id
     LEFT JOIN series_map ON  books.id = series_map.book_id
-	LEFT JOIN series ON series_map.serie_id = series.id
-	LEFT JOIN dates ON  books.date_id = dates.id
+    LEFT JOIN series ON series_map.serie_id = series.id
+    LEFT JOIN dates ON  books.date_id = dates.id
 
     WHERE
-	  first_name_id = 105
+      first_name_id = 105
       AND middle_name_id = 22
       AND last_name_id = 23918
     ORDER BY 4,5,2
@@ -155,4 +206,3 @@ pub async fn author_series(pool: &SqlitePool, ids: (u32, u32, u32)) -> anyhow::R
 
 
 */
-
