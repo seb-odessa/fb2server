@@ -24,7 +24,6 @@ pub struct SerieBooks {
     pub date: String,
 }
 
-
 pub async fn make_patterns(pool: &SqlitePool, pattern: &String) -> anyhow::Result<Vec<String>> {
     let len = pattern.chars().count() + 1;
     let sql = format!(
@@ -178,8 +177,6 @@ pub async fn author_serie_books(
 
     Ok(out)
 }
-
-
 
 /*
 --     EXPLAIN QUERY PLAN

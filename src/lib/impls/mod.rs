@@ -98,7 +98,7 @@ pub async fn root_opds_author_serie_books(
         let id = book.id;
         let num = book.num;
         let name = book.name;
-         let date = book.date;
+        let date = book.date;
 
         feed.add(
             format!("{num} - {name} ({date})"),

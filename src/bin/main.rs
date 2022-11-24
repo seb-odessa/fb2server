@@ -4,8 +4,8 @@ use sqlx::sqlite::SqlitePool;
 
 use std::sync::Mutex;
 
-use lib::opds;
 use lib::impls;
+use lib::opds;
 
 const DEFAULT_ADDRESS: &'static str = "localhost";
 const DEFAULT_PORT: u16 = 8080;
@@ -62,7 +62,6 @@ async fn root_opds_authors_mask(
     }
 }
 
-
 #[get("/opds/author/id/{fid}/{mid}/{lid}")]
 async fn root_opds_author_id(path: web::Path<(u32, u32, u32)>) -> impl Responder {
     let (fid, mid, lid) = path.into_inner();
@@ -118,7 +117,6 @@ async fn root_opds_author_serie_books(
         Err(err) => format!("{err}"),
     }
 }
-
 
 #[actix_web::main] // or #[tokio::main]
 async fn main() -> anyhow::Result<()> {
