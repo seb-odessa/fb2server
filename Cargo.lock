@@ -591,6 +591,7 @@ dependencies = [
  "anyhow",
  "chrono",
  "env_logger",
+ "lazy_static",
  "log",
  "quick-xml",
  "sqlx",

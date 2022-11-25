@@ -25,46 +25,46 @@ pub struct SerieBooks {
 }
 
 pub async fn make_patterns(pool: &SqlitePool, pattern: &String) -> anyhow::Result<Vec<String>> {
-    let len = pattern.chars().count() + 1;
-    let sql = format!(
-        r#"
-            SELECT DISTINCT substr(value, 1, {len}) AS name
+    let len = (pattern.chars().count() + 1) as u32;
+    let sql = r#"
+            SELECT DISTINCT substr(value, 1, $1) AS name
             FROM last_names
-            WHERE value LIKE "{pattern}%"
-            -- ORDER BY 1
-        "#
-    );
+            WHERE value LIKE $2 || '%'
+        "#;
 
-    let rows = sqlx::query(&sql).fetch_all(&*pool).await?;
+    let rows = sqlx::query(&sql)
+        .bind(len)
+        .bind(format!("{pattern}"))
+        .fetch_all(&*pool)
+        .await?;
+
     let mut out = Vec::new();
     for row in rows {
         let name: String = row.try_get("name")?;
-        out.push(format!("{}", name));
+        out.push(name);
     }
 
     Ok(out)
 }
 
 pub async fn find_authors(pool: &SqlitePool, name: &String) -> anyhow::Result<Vec<Author>> {
-    let sql = format!(
-        r#"
-            SELECT DISTINCT
-                first_name_id AS first_id,
-                middle_name_id AS middle_id,
-                last_name_id AS last_id,
-                first_names.value AS first_name,
-                middle_names.value AS middle_name,
-                last_names.value AS last_name
-            FROM authors_map
-            LEFT JOIN first_names ON first_names.id = first_name_id
-            LEFT JOIN middle_names ON middle_names.id = middle_name_id
-            LEFT JOIN last_names ON last_names.id = last_name_id
-            WHERE last_names.value = "{name}"
-            -- ORDER BY 4, 5, 6;
-        "#
-    );
+    let sql = r#"
+        SELECT DISTINCT 
+	        first_names.id AS first_id,
+            middle_names.id AS middle_id,
+            last_names.id AS last_id,
+            first_names.value AS first_name,
+            middle_names.value AS middle_name,
+            last_names.value AS last_name
+        FROM authors_map, first_names, middle_names, last_names
+        WHERE
+            last_names.id = (SELECT id FROM last_names WHERE value = $1)
+	    AND first_names.id = first_name_id
+	    AND middle_names.id = middle_name_id
+	    AND last_names.id = last_name_id;
+    "#;
 
-    let rows = sqlx::query(&sql).fetch_all(&*pool).await?;
+    let rows = sqlx::query(&sql).bind(name).fetch_all(&*pool).await?;
     let mut out = Vec::new();
     for row in rows {
         out.push(Author {
@@ -82,27 +82,27 @@ pub async fn find_authors(pool: &SqlitePool, name: &String) -> anyhow::Result<Ve
 
 pub async fn author(pool: &SqlitePool, ids: (u32, u32, u32)) -> anyhow::Result<String> {
     let (fid, mid, lid) = ids;
-    let sql = format!(
-        r#"
+    let sql = r#"
         SELECT 
 	        first_names.value || ' ' ||
 	        middle_names.value || ' ' ||
 	        last_names.value AS author
         FROM first_names, middle_names, last_names
-        WHERE first_names.id = {fid}
-            AND middle_names.id = {mid}
-	        AND last_names.id = {lid}
-        "#
-    );
+        WHERE first_names.id = $1 AND middle_names.id = $2 AND last_names.id = $3;
+    "#;
 
-    let row = sqlx::query(&sql).fetch_one(&*pool).await?;
+    let row = sqlx::query(&sql)
+        .bind(fid)
+        .bind(mid)
+        .bind(lid)
+        .fetch_one(&*pool)
+        .await?;
     Ok(row.try_get("author")?)
 }
 
 pub async fn author_series(pool: &SqlitePool, ids: (u32, u32, u32)) -> anyhow::Result<Vec<Serie>> {
     let (fid, mid, lid) = ids;
-    let sql = format!(
-        r#"
+    let sql = r#"
         SELECT 
             series.id AS id,
             series.value AS name,
@@ -114,16 +114,17 @@ pub async fn author_series(pool: &SqlitePool, ids: (u32, u32, u32)) -> anyhow::R
         LEFT JOIN series ON series_map.serie_id = series.id
         LEFT JOIN dates ON  books.date_id = dates.id
         WHERE
-        first_name_id = {fid}
-        AND middle_name_id = {mid}
-        AND last_name_id = {lid}
+        first_name_id = $1 AND middle_name_id = $2 AND last_name_id = $3
         AND name IS NOT NULL
-        GROUP by 1, 2
-        -- ORDER BY 1;
-        "#
-    );
+        GROUP by 1, 2;
+        "#;
 
-    let rows = sqlx::query(&sql).fetch_all(&*pool).await?;
+    let rows = sqlx::query(&sql)
+        .bind(fid)
+        .bind(mid)
+        .bind(lid)
+        .fetch_all(&*pool)
+        .await?;
     let mut out = Vec::new();
     for row in rows {
         out.push(Serie {
@@ -141,29 +142,30 @@ pub async fn author_serie_books(
     ids: (u32, u32, u32, u32),
 ) -> anyhow::Result<Vec<SerieBooks>> {
     let (fid, mid, lid, sid) = ids;
-    let sql = format!(
-        r#"
+    let sql = r#"
         SELECT
             books.book_id AS id,
             series_map.serie_num AS num,
             titles.value AS name,
             books.book_size AS size,
             dates.value AS added
-      FROM authors_map
-      LEFT JOIN books ON authors_map.book_id = books.book_id
-      LEFT JOIN titles ON books.title_id = titles.id
-      LEFT JOIN series_map ON  books.book_id = series_map.book_id
-      LEFT JOIN series ON series_map.serie_id = series.id
-      LEFT JOIN dates ON  books.date_id = dates.id
-      WHERE
-        first_name_id = {fid}
-        AND middle_name_id = {mid}
-        AND last_name_id = {lid}
-        AND series.id = {sid}
-      ORDER BY 5, 2;
-        "#
-    );
-    let rows = sqlx::query(&sql).fetch_all(&*pool).await?;
+        FROM authors_map
+        LEFT JOIN books ON authors_map.book_id = books.book_id
+        LEFT JOIN titles ON books.title_id = titles.id
+        LEFT JOIN series_map ON  books.book_id = series_map.book_id
+        LEFT JOIN series ON series_map.serie_id = series.id
+        LEFT JOIN dates ON  books.date_id = dates.id
+        WHERE
+            first_name_id = $1 AND middle_name_id = $2 AND last_name_id = $3 AND series.id = $4
+        ORDER BY 2, 3, 5;
+    "#;
+    let rows = sqlx::query(&sql)
+        .bind(fid)
+        .bind(mid)
+        .bind(lid)
+        .bind(sid)
+        .fetch_all(&*pool)
+        .await?;
     let mut out = Vec::new();
     for row in rows {
         out.push(SerieBooks {

@@ -1,8 +1,15 @@
+
+use std::collections::HashSet;
+
 use sqlx::sqlite::SqlitePool;
 
 use crate::database;
 use crate::opds::Feed;
 use crate::utils;
+
+lazy_static! {
+    static ref WRONG: HashSet<char> = HashSet::from(['À', '#', '.', '-', '%']);
+}
 
 pub async fn root_opds_authors(pool: &SqlitePool) -> anyhow::Result<Feed> {
     let all = &String::from("");
@@ -10,6 +17,10 @@ pub async fn root_opds_authors(pool: &SqlitePool) -> anyhow::Result<Feed> {
     let patterns = database::make_patterns(&pool, &all).await?;
     for pattern in utils::sorted(patterns) {
         if !pattern.is_empty() {
+            let ch = pattern.chars().next().unwrap();
+            if WRONG.contains(&ch) {
+                continue;
+            }
             feed.add(
                 format!("{pattern}..."),
                 format!("/opds/authors/mask/{pattern}"),
@@ -101,7 +112,7 @@ pub async fn root_opds_author_serie_books(
         let date = book.date;
 
         feed.add(
-            format!("{num} - {name} ({date})"),
+            format!("{num} - {name} ({date}) {id}"),
             format!("/opds/book/{id}"),
         );
     }
