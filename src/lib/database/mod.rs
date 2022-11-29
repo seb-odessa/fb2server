@@ -153,7 +153,7 @@ pub async fn author_serie_books(
         LEFT JOIN books ON authors_map.book_id = books.book_id
         LEFT JOIN titles ON books.title_id = titles.id
         LEFT JOIN series_map ON  books.book_id = series_map.book_id
-        LEFT JOIN series ON series_map.serie_id = series.id
+        -- LEFT JOIN series ON series_map.serie_id = series.id
         LEFT JOIN dates ON  books.date_id = dates.id
         WHERE
             first_name_id = $1 AND middle_name_id = $2 AND last_name_id = $3 AND series.id = $4
@@ -180,28 +180,85 @@ pub async fn author_serie_books(
     Ok(out)
 }
 
-/*
---     EXPLAIN QUERY PLAN
-    SELECT DISTINCT
-      authors_map.book_id,
-      titles.title,
-      dates.date,
-      series.name,
-      series_map.serie_num
+pub async fn author_nonserie_books(
+    pool: &SqlitePool,
+    ids: (u32, u32, u32),
+) -> anyhow::Result<Vec<SerieBooks>> {
+    let (fid, mid, lid) = ids;
+    let sql = r#"
+        SELECT
+            books.book_id AS id,
+            series_map.serie_num AS num,
+            titles.value AS name,
+            books.book_size AS size,
+            dates.value AS added
+        FROM authors_map
+        LEFT JOIN books ON authors_map.book_id = books.book_id
+        LEFT JOIN titles ON books.title_id = titles.id
+        LEFT JOIN series_map ON  books.book_id = series_map.book_id
+        LEFT JOIN dates ON  books.date_id = dates.id
+        WHERE
+            first_name_id = $1 AND middle_name_id = $2 AND last_name_id = $3 
+        AND series_map.serie_num IS NULL
+        ORDER BY 2, 3, 5;
+    "#;
+    let rows = sqlx::query(&sql)
+        .bind(fid)
+        .bind(mid)
+        .bind(lid)
+        .fetch_all(&*pool)
+        .await?;
+    let mut out = Vec::new();
+    for row in rows {
+        out.push(SerieBooks {
+            id: row.try_get("id")?,
+            num: row.try_get("num")?,
+            name: row.try_get("name")?,
+            size: row.try_get("size")?,
+            date: row.try_get("added")?,
+        });
+    }
 
-    FROM authors_map
-    LEFT JOIN books ON authors_map.book_id = books.id
-    LEFT JOIN titles ON books.title_id = titles.id
-    LEFT JOIN series_map ON  books.id = series_map.book_id
-    LEFT JOIN series ON series_map.serie_id = series.id
-    LEFT JOIN dates ON  books.date_id = dates.id
+    Ok(out)
+}
 
-    WHERE
-      first_name_id = 105
-      AND middle_name_id = 22
-      AND last_name_id = 23918
-    ORDER BY 4,5,2
-      ;
+pub async fn author_alphabet_books(
+    pool: &SqlitePool,
+    ids: (u32, u32, u32),
+) -> anyhow::Result<Vec<SerieBooks>> {
+    let (fid, mid, lid) = ids;
+    let sql = r#"
+        SELECT
+            books.book_id AS id,
+            series_map.serie_num AS num,
+            titles.value AS name,
+            books.book_size AS size,
+            dates.value AS added
+        FROM authors_map
+        LEFT JOIN books ON authors_map.book_id = books.book_id
+        LEFT JOIN titles ON books.title_id = titles.id
+        LEFT JOIN series_map ON  books.book_id = series_map.book_id
+        LEFT JOIN dates ON  books.date_id = dates.id
+        WHERE
+            first_name_id = $1 AND middle_name_id = $2 AND last_name_id = $3 ;
+    "#;
+    let rows = sqlx::query(&sql)
+        .bind(fid)
+        .bind(mid)
+        .bind(lid)
+        .fetch_all(&*pool)
+        .await?;
+    let mut out = Vec::new();
+    for row in rows {
+        out.push(SerieBooks {
+            id: row.try_get("id")?,
+            num: row.try_get("num")?,
+            name: row.try_get("name")?,
+            size: row.try_get("size")?,
+            date: row.try_get("added")?,
+        });
+    }
 
+    Ok(out)
+}
 
-*/

@@ -14,9 +14,10 @@ path = "src/bin/main.rs"
 [dependencies]
     anyhow = "1.0"
     actix-web = "4.2"
+    actix-files = "0.6.2"
     sqlx = { version = "0.6", features = [ "runtime-actix-native-tls", "sqlite" ] }
     log = "0.4"
-    env_logger = "0.9"
+    env_logger = "0.10.0"
     quick-xml = "0.26.0"
     chrono = "0.4"
     lazy_static = "1.4.0"
