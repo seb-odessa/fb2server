@@ -1,5 +1,5 @@
 [package]
-name = "fb2server"
+name = "opds_server"
 version = "0.1.0"
 edition = "2021"
 
@@ -8,7 +8,7 @@ name = "lib"
 path = "src/lib/lib.rs"
 
 [[bin]]
-name = "fb2server"
+name = "opds_server"
 path = "src/bin/main.rs"
 
 [dependencies]

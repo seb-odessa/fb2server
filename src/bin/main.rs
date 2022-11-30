@@ -1,19 +1,19 @@
-use actix_web::{get, web, App, HttpServer, Responder};
 use actix_files::NamedFile;
+use actix_web::{get, web, App, HttpServer, Responder};
 
 use log::{info, warn};
 use sqlx::sqlite::SqlitePool;
 
-use std::sync::Mutex;
 use std::path::PathBuf;
+use std::sync::Mutex;
 
 use lib::impls;
 use lib::opds;
 
 const DEFAULT_ADDRESS: &'static str = "localhost";
 const DEFAULT_PORT: u16 = 8080;
-const DEFAULT_DATABASE: &'static str = "books.db";
-const DEFAULT_LIBRARY: &'static str = ".";
+const DEFAULT_DATABASE: &'static str = "./books.db";
+const DEFAULT_LIBRARY: &'static str = "/lib.rus.ec";
 
 struct AppState {
     pool: Mutex<SqlitePool>,
@@ -155,9 +155,16 @@ async fn root_opds_author_alphabet_books(
 }
 
 #[get("/opds/book/{id}")]
-async fn root_opds_book(ctx: web::Data<AppState>, id: web::Path<u32>) -> std::io::Result<NamedFile> {
-    let root = ctx.path.clone();
-    impls::root_opds_book(root, id.into_inner()).await
+async fn root_opds_book(
+    ctx: web::Data<AppState>,
+    param: web::Path<u32>,
+) -> std::io::Result<NamedFile> {
+    let id = param.into_inner();
+    info!("/opds/book/{id})");
+
+    let book = impls::extract_book(ctx.path.clone(), id)?;
+    info!("root_opds_book =>: {}", book.display());
+    Ok(actix_files::NamedFile::open_async(book).await?)
 }
 
 #[actix_web::main]

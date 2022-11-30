@@ -261,4 +261,3 @@ pub async fn author_alphabet_books(
 
     Ok(out)
 }
-

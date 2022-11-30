@@ -4,10 +4,8 @@ use std::io;
 use std::io::{Error, ErrorKind};
 use std::path::PathBuf;
 
-use regex::Regex;
-
-use actix_files::NamedFile;
 use log::info;
+use regex::Regex;
 use sqlx::sqlite::SqlitePool;
 
 use crate::database;
@@ -163,14 +161,7 @@ pub async fn root_opds_author_alphabet_books(
     return Ok(feed);
 }
 
-pub async fn root_opds_book(root: PathBuf, id: u32) -> std::io::Result<NamedFile> {
-    info!("root_opds_book({}, {id})", root.display());
-    let book = extract_book(root, id)?;
-    info!("root_opds_book path: {}", book.display());
-    Ok(actix_files::NamedFile::open_async(book).await?)
-}
-
-fn extract_book(root: PathBuf, id: u32) -> std::io::Result<PathBuf> {
+pub fn extract_book(root: PathBuf, id: u32) -> std::io::Result<PathBuf> {
     let rx = Regex::new("fb2-([0-9]+)-([0-9]+)")
         .map_err(|e| Error::new(ErrorKind::Other, format!("{e}")))?;
     let book_name = format!("{id}.fb2");
@@ -203,7 +194,11 @@ fn extract_book(root: PathBuf, id: u32) -> std::io::Result<PathBuf> {
                                 let outname = PathBuf::from(std::env::temp_dir())
                                     .join(format!("{crc32}"))
                                     .with_extension("fb2");
-                                info!("Found {} -> crc32: {crc32}, path: {}", file.name(), outname.display());
+                                info!(
+                                    "Found {} -> crc32: {crc32}, path: {}",
+                                    file.name(),
+                                    outname.display()
+                                );
                                 let mut outfile = fs::File::create(&outname)?;
                                 io::copy(&mut file, &mut outfile)?;
                                 return Ok(outname);
