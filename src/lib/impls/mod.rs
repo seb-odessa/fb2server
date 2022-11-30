@@ -1,5 +1,13 @@
 use std::collections::HashSet;
+use std::fs;
+use std::io;
+use std::io::{Error, ErrorKind};
+use std::path::PathBuf;
 
+use regex::Regex;
+
+use actix_files::NamedFile;
+use log::info;
 use sqlx::sqlite::SqlitePool;
 
 use crate::database;
@@ -94,10 +102,7 @@ pub async fn root_opds_author_series(
             format!("/opds/author/serie/books/{fid}/{mid}/{lid}/{sid}"),
         );
     }
-    feed.add(
-        author,
-        format!("/opds/author/id/{fid}/{mid}/{lid}"),
-    );
+    feed.add(author, format!("/opds/author/id/{fid}/{mid}/{lid}"));
     return Ok(feed);
 }
 
@@ -134,10 +139,7 @@ pub async fn root_opds_author_nonserie_books(
         let name = book.name;
         let date = book.date;
 
-        feed.book(
-            format!("{name} ({date})"),
-            format!("/opds/book/{id}"),
-        );
+        feed.book(format!("{name} ({date})"), format!("/opds/book/{id}"));
     }
     return Ok(feed);
 }
@@ -150,16 +152,70 @@ pub async fn root_opds_author_alphabet_books(
     let mut feed = Feed::new("Книги");
     let mut books = database::author_alphabet_books(&pool, (fid, mid, lid)).await?;
     books.sort_by(|a, b| utils::fb2sort(&a.name, &b.name));
-    
+
     for book in books {
         let id = book.id;
         let name = book.name;
         let date = book.date;
 
-        feed.book(
-            format!("{name} ({date})"),
-            format!("/opds/book/{id}"),
-        );
+        feed.book(format!("{name} ({date})"), format!("/opds/book/{id}"));
     }
     return Ok(feed);
+}
+
+pub async fn root_opds_book(root: PathBuf, id: u32) -> std::io::Result<NamedFile> {
+    info!("root_opds_book({}, {id})", root.display());
+    let book = extract_book(root, id)?;
+    info!("root_opds_book path: {}", book.display());
+    Ok(actix_files::NamedFile::open_async(book).await?)
+}
+
+fn extract_book(root: PathBuf, id: u32) -> std::io::Result<PathBuf> {
+    let rx = Regex::new("fb2-([0-9]+)-([0-9]+)")
+        .map_err(|e| Error::new(ErrorKind::Other, format!("{e}")))?;
+    let book_name = format!("{id}.fb2");
+    info!("book_name: {book_name}");
+
+    if root.is_dir() {
+        for entry in fs::read_dir(&root)? {
+            let path = entry?.path();
+            if path.is_file() {
+                if let Some(name) = path.file_name() {
+                    let name = name.to_string_lossy();
+                    if let Some(caps) = rx.captures(&name) {
+                        let min = caps
+                            .get(1)
+                            .map_or("", |m| m.as_str())
+                            .parse::<u32>()
+                            .map_err(|err| Error::new(ErrorKind::Other, format!("{err}")))?;
+
+                        let max = caps
+                            .get(2)
+                            .map_or("", |m| m.as_str())
+                            .parse::<u32>()
+                            .map_err(|err| Error::new(ErrorKind::Other, format!("{err}")))?;
+
+                        if min <= id && id <= max {
+                            let file = fs::File::open(&path)?;
+                            let mut archive = zip::ZipArchive::new(file)?;
+                            if let Ok(mut file) = archive.by_name(&book_name) {
+                                let crc32 = file.crc32();
+                                let outname = PathBuf::from(std::env::temp_dir())
+                                    .join(format!("{crc32}"))
+                                    .with_extension("fb2");
+                                info!("Found {} -> crc32: {crc32}, path: {}", file.name(), outname.display());
+                                let mut outfile = fs::File::create(&outname)?;
+                                io::copy(&mut file, &mut outfile)?;
+                                return Ok(outname);
+                            };
+                        }
+                    }
+                }
+            }
+        }
+    }
+    Err(Error::new(
+        ErrorKind::Other,
+        format!("The book {id} was not found in {}", root.display()),
+    ))
 }
