@@ -42,26 +42,33 @@ pub async fn root_opds_authors_mask(
     let mut feed = Feed::new("Поиск книг по авторам");
 
     loop {
-        // Prepare authors list with exact surename (lastname)
-        let mut authors = database::find_authors(&pool, &pattern).await?;
-        authors.sort_by(|a, b| utils::fb2sort(&a.first_name.value, &b.first_name.value));
-        for author in authors {
-            let title = format!(
-                "{} {} {}",
-                author.last_name.value, author.first_name.value, author.middle_name.value,
-            );
-            let link = format!(
-                "/opds/author/id/{}/{}/{}",
-                author.first_name.id, author.middle_name.id, author.last_name.id
-            );
-            feed.add(title, link);
-        }
-
+        let mut found = false;
         let patterns = database::make_patterns(&pool, &pattern).await?;
         let mut tail = patterns
             .into_iter()
-            .filter(|name| *name != pattern)
+            .filter(|name| {
+                if !found {
+                    found = pattern.eq(name);
+                }
+                *name != pattern
+            })
             .collect::<Vec<String>>();
+        if found {
+            // Prepare authors list with exact surename (lastname)
+            let mut authors = database::find_authors(&pool, &pattern).await?;
+            authors.sort_by(|a, b| utils::fb2sort(&a.first_name.value, &b.first_name.value));
+            for author in authors {
+                let title = format!(
+                    "{} {} {}",
+                    author.last_name.value, author.first_name.value, author.middle_name.value,
+                );
+                let link = format!(
+                    "/opds/author/id/{}/{}/{}",
+                    author.first_name.id, author.middle_name.id, author.last_name.id
+                );
+                feed.add(title, link);
+            }
+        }
 
         if tail.is_empty() {
             break;
