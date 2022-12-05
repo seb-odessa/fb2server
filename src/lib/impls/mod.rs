@@ -9,6 +9,7 @@ use regex::Regex;
 use sqlx::sqlite::SqlitePool;
 
 use crate::database;
+use crate::database::QueryType;
 use crate::opds::Feed;
 use crate::utils;
 
@@ -16,23 +17,126 @@ lazy_static! {
     static ref WRONG: HashSet<char> = HashSet::from(['À', '#', '.', '-', '%']);
 }
 
-pub async fn root_opds_authors(pool: &SqlitePool) -> anyhow::Result<Feed> {
+pub async fn root_opds_by_mask(
+    pool: &SqlitePool,
+    query: QueryType,
+    title: String,
+    root: String,
+) -> anyhow::Result<Feed> {
     let all = &String::from("");
-    let mut feed = Feed::new("Поиск книг по авторам");
-    let patterns = database::make_patterns(&pool, &all).await?;
+    let mut feed = Feed::new(title);
+    let patterns = database::make_patterns(&pool, query, &all).await?;
     for pattern in utils::sorted(patterns) {
         if !pattern.is_empty() {
             let ch = pattern.chars().next().unwrap();
             if WRONG.contains(&ch) {
                 continue;
             }
-            feed.add(
-                format!("{pattern}..."),
-                format!("/opds/authors/mask/{pattern}"),
-            );
+            feed.add(format!("{pattern}..."), format!("{root}/{pattern}"));
         }
     }
     Ok(feed)
+}
+
+pub async fn root_opds_search_by_mask(
+    pool: &SqlitePool,
+    query: QueryType,
+    title: String,
+    root: String,
+    mut pattern: String,
+) -> anyhow::Result<Feed> {
+    let mut feed = Feed::new(title);
+
+    loop {
+        let mut found = false;
+        let patterns = database::make_patterns(&pool, query, &pattern).await?;
+        let mut tail = patterns
+            .into_iter()
+            .filter(|name| {
+                if !found {
+                    found = pattern.eq(name);
+                }
+                *name != pattern
+            })
+            .collect::<Vec<String>>();
+
+        if found {
+            match query {
+                QueryType::Author => add_authors(&pool, &pattern, &mut feed).await?,
+                QueryType::Serie => add_series(&pool, &pattern, &mut feed).await?,
+            }
+        }
+
+        if tail.is_empty() {
+            break;
+        } else if 1 == tail.len() {
+            std::mem::swap(&mut pattern, &mut tail[0]);
+        } else {
+            for prefix in utils::sorted(tail) {
+                feed.add(format!("{prefix}..."), format!("{root}/{prefix}"));
+            }
+            break;
+        }
+    }
+
+    Ok(feed)
+}
+
+async fn add_authors(pool: &SqlitePool, name: &String, feed: &mut Feed) -> anyhow::Result<()> {
+    let mut authors = database::find_authors(&pool, &name).await?;
+    authors.sort_by(|a, b| utils::fb2sort(&a.first_name.value, &b.first_name.value));
+
+    for author in authors {
+        let title = format!(
+            "{} {} {}",
+            author.last_name.value, author.first_name.value, author.middle_name.value,
+        );
+        let link = format!(
+            "/opds/author/id/{}/{}/{}",
+            author.first_name.id, author.middle_name.id, author.last_name.id
+        );
+        feed.add(title, link);
+    }
+    Ok(())
+}
+
+async fn add_series(pool: &SqlitePool, name: &String, feed: &mut Feed) -> anyhow::Result<()> {
+    let mut values = database::find_series(&pool, &name).await?;
+    values.sort_by(|a, b| utils::fb2sort(&a.value, &b.value));
+
+    for value in values {
+        let title = format!("{}", value.value);
+        let link = format!("/opds/serie/id/{}", value.id);
+        feed.add(title, link);
+    }
+    Ok(())
+}
+
+pub async fn root_opds_serie_books(
+    pool: &SqlitePool,
+    id: u32,
+    sort: String,
+) -> anyhow::Result<Feed> {
+    let mut feed = Feed::new("Книги в серии");
+    let mut values = database::root_opds_serie_books(&pool, id).await?;
+    match sort.as_str() {
+        "numbered" => values.sort_by(|a, b| a.num.cmp(&b.num)),
+        "alphabet" => values.sort_by(|a, b| utils::fb2sort(&a.name, &b.name)),
+        "added" => values.sort_by(|a, b| utils::fb2sort(&a.date, &b.date)),
+        _ => {}
+    }
+    for book in values {
+        let id = book.id;
+        let num = book.num;
+        let name = book.name;
+        let date = book.date;
+        let author = book.author;
+        feed.book(
+            format!("{num} {name} - {author} ({date})"),
+            format!("/opds/book/{id}"),
+        );
+    }
+    return Ok(feed);
 }
 
 pub async fn root_opds_authors_mask(
@@ -43,7 +147,7 @@ pub async fn root_opds_authors_mask(
 
     loop {
         let mut found = false;
-        let patterns = database::make_patterns(&pool, &pattern).await?;
+        let patterns = database::make_patterns(&pool, QueryType::Author, &pattern).await?;
         let mut tail = patterns
             .into_iter()
             .filter(|name| {

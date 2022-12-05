@@ -9,6 +9,7 @@ use std::fmt::Display;
 use std::path::PathBuf;
 use std::sync::Mutex;
 
+use lib::database::QueryType;
 use lib::impls;
 use lib::opds;
 
@@ -30,6 +31,14 @@ impl AppState {
     }
 }
 
+#[get("/opds/nimpl")]
+async fn root_opds_nimpl() -> impl Responder {
+    // Not Implemented placeholder
+    let mut feed = opds::Feed::new("Not Implemented");
+    feed.add("Пока не работает", "/opds/nimpl");
+    opds::format_feed(feed)
+}
+
 #[get("/opds")]
 async fn root_opds() -> impl Responder {
     info!("/opds");
@@ -44,8 +53,23 @@ async fn root_opds() -> impl Responder {
 async fn root_opds_authors(ctx: web::Data<AppState>) -> impl Responder {
     info!("/opds/authors");
 
+    let title = String::from("Поиск книг по авторам");
+    let root = String::from("/opds/authors/mask");
     let pool = ctx.pool.lock().unwrap();
-    match impls::root_opds_authors(&pool).await {
+    match impls::root_opds_by_mask(&pool, QueryType::Author, title, root).await {
+        Ok(feed) => opds::format_feed(feed),
+        Err(err) => format!("{err}"),
+    }
+}
+
+#[get("/opds/series")]
+async fn root_opds_series(ctx: web::Data<AppState>) -> impl Responder {
+    info!("/opds/series");
+
+    let title = String::from("Поиск книг сериям");
+    let root = String::from("/opds/series/mask");
+    let pool = ctx.pool.lock().unwrap();
+    match impls::root_opds_by_mask(&pool, QueryType::Serie, title, root).await {
         Ok(feed) => opds::format_feed(feed),
         Err(err) => format!("{err}"),
     }
@@ -59,8 +83,27 @@ async fn root_opds_authors_mask(
     let pattern = path.into_inner();
     info!("/opds/authors/mask/{pattern}");
 
+    let title = String::from("Поиск книг по авторам");
+    let root = String::from("/opds/authors/mask");
     let pool = ctx.pool.lock().unwrap();
-    match impls::root_opds_authors_mask(&pool, pattern).await {
+    match impls::root_opds_search_by_mask(&pool, QueryType::Author, title, root, pattern).await {
+        Ok(feed) => opds::format_feed(feed),
+        Err(err) => format!("{err}"),
+    }
+}
+
+#[get("/opds/series/mask/{pattern}")]
+async fn root_opds_series_mask(
+    ctx: web::Data<AppState>,
+    path: web::Path<String>,
+) -> impl Responder {
+    let pattern = path.into_inner();
+    info!("/opds/series/mask/{pattern}");
+
+    let title = String::from("Поиск книг сериям");
+    let root = String::from("/opds/series/mask");
+    let pool = ctx.pool.lock().unwrap();
+    match impls::root_opds_search_by_mask(&pool, QueryType::Serie, title, root, pattern).await {
         Ok(feed) => opds::format_feed(feed),
         Err(err) => format!("{err}"),
     }
@@ -92,11 +135,37 @@ async fn root_opds_author_id(path: web::Path<(u32, u32, u32)>) -> impl Responder
     opds::format_feed(feed)
 }
 
-#[get("/opds/nimpl")]
-async fn root_opds_nimpl() -> impl Responder {
-    let mut feed = opds::Feed::new("Not Implemented");
-    feed.add("Пока не работает", "/opds/nimpl");
+#[get("/opds/serie/id/{id}")]
+async fn root_opds_serie_id(path: web::Path<u32>) -> impl Responder {
+    let id = path.into_inner();
+    info!("/opds/serie/id/{id}");
+
+    let mut feed = opds::Feed::new("Книги в серии");
+    feed.add(
+        "Книги по номеру в серии",
+        &format!("/opds/serie/books/{id}/numbered"),
+    );
+    feed.add(
+        "Книги по алфавиту",
+        &format!("/opds/serie/books/{id}/alphabet"),
+    );
+    feed.add(
+        "Книги по дате поступления",
+        &format!("/opds/serie/books/{id}/added"),
+    );
     opds::format_feed(feed)
+}
+
+#[get("/opds/serie/books/{id}/{sort}")]
+async fn root_opds_serie_books(ctx: web::Data<AppState>,path: web::Path<(u32, String)>) -> impl Responder {
+    let (id, sort) = path.into_inner();
+    info!("/opds/serie/{id}/{sort}");
+
+    let pool = ctx.pool.lock().unwrap();
+    match impls::root_opds_serie_books(&pool, id, sort).await {
+        Ok(feed) => opds::format_feed(feed),
+        Err(err) => format!("{err}"),
+    }
 }
 
 #[get("/opds/author/series/{fid}/{mid}/{lid}")]
@@ -203,6 +272,7 @@ async fn main() -> anyhow::Result<()> {
             .app_data(ctx.clone())
             .service(root_opds)
             .service(root_opds_nimpl)
+            // Books by Authors
             .service(root_opds_authors)
             .service(root_opds_authors_mask)
             .service(root_opds_author_id)
@@ -211,6 +281,12 @@ async fn main() -> anyhow::Result<()> {
             .service(root_opds_author_nonserie_books)
             .service(root_opds_author_alphabet_books)
             .service(root_opds_author_added_books)
+            // Books by Series
+            .service(root_opds_series)
+            .service(root_opds_series_mask)
+            .service(root_opds_serie_id)
+            .service(root_opds_serie_books)
+            // Books
             .service(root_opds_book)
     })
     .bind((addr.as_str(), port))?
