@@ -401,3 +401,72 @@ pub async fn genres_by_meta(pool: &SqlitePool, meta: &String) -> anyhow::Result<
     }
     Ok(out)
 }
+
+pub async fn root_opds_genres_series(
+    pool: &SqlitePool,
+    genre: &String,
+) -> anyhow::Result<Vec<Serie>> {
+    let sql = r#"
+        WITH genre_codes(id, value) AS (
+            SELECT id, code FROM genres_def LEFT JOIN genres
+            WHERE genre = $1 AND value = code
+        )
+        SELECT series.id AS id, series.value AS name, count(series.value) AS count
+        FROM genre_codes
+        LEFT JOIN genres_map ON genres_map.genre_id = genre_codes.id
+        LEFT JOIN series_map ON series_map.book_id = genres_map.book_id
+        LEFT JOIN series ON series.id = series_map.serie_id
+        WHERE series.value IS NOT NULL
+        GROUP BY 1, 2
+    "#;
+
+    let rows = sqlx::query(&sql).bind(genre).fetch_all(&*pool).await?;
+    let mut out = Vec::new();
+    for row in rows {
+        out.push(Serie {
+            id: row.try_get("id")?,
+            name: row.try_get("name")?,
+            count: row.try_get("count")?,
+        });
+    }
+
+    Ok(out)
+}
+
+pub async fn root_opds_genres_authors(
+    pool: &SqlitePool,
+    genre: &String,
+) -> anyhow::Result<Vec<Author>> {
+    let sql = r#"
+        WITH genre_codes(id, value) AS (
+            SELECT id, code FROM genres_def LEFT JOIN genres
+        WHERE genre = $1 AND value = code
+        )
+        SELECT DISTINCT
+            first_names.id AS first_id,
+            middle_names.id AS middle_id,
+            last_names.id AS last_id,
+            first_names.value AS first_name,
+            middle_names.value AS middle_name,
+            last_names.value AS last_name
+        FROM genre_codes
+        LEFT JOIN genres_map ON genres_map.genre_id = genre_codes.id
+        LEFT JOIN authors_map ON authors_map.book_id = genres_map.book_id
+        LEFT JOIN first_names ON first_names.id = authors_map.first_name_id
+        LEFT JOIN middle_names ON middle_names.id = authors_map.middle_name_id
+        LEFT JOIN last_names ON last_names.id = authors_map.last_name_id
+        ORDER BY 6,4,5
+    "#;
+
+    let rows = sqlx::query(&sql).bind(genre).fetch_all(&*pool).await?;
+    let mut out = Vec::new();
+    for row in rows {
+        out.push(Author {
+            first_name: Value::new(row.try_get("first_id")?, row.try_get("first_name")?),
+            middle_name: Value::new(row.try_get("middle_id")?, row.try_get("middle_name")?),
+            last_name: Value::new(row.try_get("last_id")?, row.try_get("last_name")?),
+        });
+    }
+
+    Ok(out)
+}
