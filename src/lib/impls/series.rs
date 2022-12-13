@@ -1,5 +1,5 @@
-use crate::opds::Feed;
 use crate::database;
+use crate::opds::Feed;
 use crate::utils;
 
 use sqlx::sqlite::SqlitePool;

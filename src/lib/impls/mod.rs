@@ -1,5 +1,5 @@
-use std::collections::HashSet;
 use sqlx::sqlite::SqlitePool;
+use std::collections::HashSet;
 
 use crate::database;
 use crate::database::QueryType;
@@ -12,8 +12,8 @@ lazy_static! {
 
 pub mod authors;
 use authors::add_authors;
-pub use authors::root_opds_author_series;
 pub use authors::root_opds_author_books;
+pub use authors::root_opds_author_series;
 
 pub mod series;
 use series::add_series;
@@ -23,10 +23,10 @@ pub mod books;
 pub use books::extract_book;
 
 pub mod genres;
-pub use genres::root_opds_meta;
+pub use genres::root_opds_genres_authors;
 pub use genres::root_opds_genres_meta;
 pub use genres::root_opds_genres_series;
-pub use genres::root_opds_genres_authors;
+pub use genres::root_opds_meta;
 
 pub async fn root_opds_by_mask(
     pool: &SqlitePool,

@@ -1,30 +1,19 @@
 use std::cmp::*;
+use std::collections::HashSet;
 
-pub fn sorter(a: &String, b: &String) -> Ordering {
-    let length = a.chars().count().cmp(&b.chars().count());
-    if length == Ordering::Equal {
-        let ac = a.chars().collect::<Vec<char>>();
-        let bc = b.chars().collect::<Vec<char>>();
-        for i in 0..ac.len() {
-            if ac[i].is_ascii() && bc[i].is_ascii() {
-                let r = ac[i].cmp(&bc[i]);
-                if r != Ordering::Equal {
-                    return r;
-                }
-            } else if ac[i].is_ascii() && !bc[i].is_ascii() {
-                return Ordering::Greater;
-            } else if !ac[i].is_ascii() && bc[i].is_ascii() {
-                return Ordering::Less;
-            } else {
-                let r = ac[i].cmp(&bc[i]);
-                if r != Ordering::Equal {
-                    return r;
-                }
-            }
-        }
-        return a.cmp(&b);
-    }
-    return length;
+lazy_static! {
+    static ref CYRILLIC_UC: HashSet<char> = HashSet::from([
+        'А', 'Б', 'В', 'Г', 'Д', 'Е', 'Ё', 'Ж', 'З', 'И', 'Й', 'К', 'Л', 'М', 'Н', 'О', 'П', 'Р',
+        'С', 'Т', 'У', 'Ф', 'Х', 'Ц', 'Ч', 'Ш', 'Щ', 'Ъ', 'Ы', 'Ь', 'Э', 'Ю', 'Я'
+    ]);
+    static ref CYRILLIC_LC: HashSet<char> = HashSet::from([
+        'а', 'б', 'в', 'г', 'д', 'е', 'ё', 'ж', 'з', 'и', 'й', 'к', 'л', 'м', 'н', 'о', 'п', 'р',
+        'с', 'т', 'у', 'ф', 'х', 'ц', 'ч', 'ш', 'щ', 'ъ', 'ы', 'ь', 'э', 'ю', 'я'
+    ]);
+}
+
+fn is_cyrillic(ch: &char) -> bool {
+    CYRILLIC_UC.contains(ch) || CYRILLIC_LC.contains(ch)
 }
 
 fn fb2cmp(a: &char, b: &char) -> Ordering {
@@ -32,10 +21,14 @@ fn fb2cmp(a: &char, b: &char) -> Ordering {
         return Ordering::Greater;
     } else if !a.is_ascii() && b.is_ascii() {
         return Ordering::Less;
+    } else if !a.is_ascii() && !b.is_ascii() {
+        if is_cyrillic(&a) && !is_cyrillic(&b) {
+            return Ordering::Less;
+        } else if !is_cyrillic(&a) && is_cyrillic(&b) {
+            return Ordering::Greater;
+        }
     }
-    let r = a.cmp(&b);
-    // println!("{a} {r:?} {b}");
-    return r;
+    return a.cmp(&b);
 }
 
 pub fn fb2sort(lhv: &String, rhv: &String) -> Ordering {
