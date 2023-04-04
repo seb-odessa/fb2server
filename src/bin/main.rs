@@ -6,9 +6,11 @@ use sqlx::sqlite::SqlitePool;
 
 use std::env::VarError;
 use std::fmt::Display;
+use std::io;
 use std::path::PathBuf;
 use std::sync::Mutex;
 
+use lib::database;
 use lib::database::QueryType;
 use lib::impls;
 use lib::impls::authors;
@@ -16,17 +18,20 @@ use lib::opds;
 
 const DEFAULT_ADDRESS: &'static str = "localhost";
 const DEFAULT_PORT: u16 = 8080;
-const DEFAULT_DATABASE: &'static str = "./books.db";
+const DEFAULT_DATABASE: &'static str = "sqlite://books.db?mode=ro";
+const DEFAULT_STATISTIC: &'static str = "sqlite://statistic.db?mode=rwc";
 const DEFAULT_LIBRARY: &'static str = "/lib.rus.ec";
 
 struct AppState {
     pool: Mutex<SqlitePool>,
+    statistic: Mutex<SqlitePool>,
     path: PathBuf,
 }
 impl AppState {
-    pub fn new(pool: SqlitePool, library: PathBuf) -> Self {
+    pub fn new(pool: SqlitePool, statistic: SqlitePool, library: PathBuf) -> Self {
         Self {
             pool: Mutex::new(pool),
+            statistic: Mutex::new(statistic),
             path: library,
         }
     }
@@ -38,9 +43,12 @@ async fn main() -> anyhow::Result<()> {
     std::env::set_var("RUST_BACKTRACE", "1");
     env_logger::init();
 
-    let (addr, port, database, library) = read_params();
+    let (addr, port, database, statistic, library) = read_params();
     let pool = SqlitePool::connect(&database).await?;
-    let ctx = web::Data::new(AppState::new(pool, library));
+    let statistic = SqlitePool::connect(&statistic).await?;
+    database::init_statistic_db(&statistic).await?;
+
+    let ctx = web::Data::new(AppState::new(pool, statistic, library));
 
     info!("OPDS Server will ready at http://{addr}:{port}/opds");
     HttpServer::new(move || {
@@ -68,6 +76,8 @@ async fn main() -> anyhow::Result<()> {
             .service(root_opds_genres_genre)
             .service(root_opds_genres_series)
             .service(root_opds_genres_authors)
+            // Favorite Books
+            .service(root_opds_favorite_authors)
             // Books
             .service(root_opds_book)
     })
@@ -86,12 +96,13 @@ async fn root_opds_nimpl() -> impl Responder {
 }
 
 #[get("/opds")]
-async fn root_opds() -> impl Responder {
+async fn root_opds(_ctx: web::Data<AppState>) -> impl Responder {
     info!("/opds");
     let mut feed = opds::Feed::new("Catalog Root");
     feed.add("Поиск книг по авторам", "/opds/authors");
     feed.add("Поиск книг по сериям", "/opds/series");
     feed.add("Поиск книг по жанрам", "/opds/meta");
+    feed.add("Любимые авторы ", "/opds/favorites");
     opds::format_feed(feed)
 }
 
@@ -187,6 +198,19 @@ async fn root_opds_genres_authors(
 
     let pool = ctx.pool.lock().unwrap();
     match impls::root_opds_genres_authors(&pool, &genre).await {
+        Ok(feed) => opds::format_feed(feed),
+        Err(err) => format!("{err}"),
+    }
+}
+
+#[get("/opds/favorites")]
+async fn root_opds_favorite_authors(ctx: web::Data<AppState>) -> impl Responder {
+    info!("/opds/favorites");
+
+    let books = ctx.pool.lock().unwrap();
+    let stats = ctx.statistic.lock().unwrap();
+
+    match impls::root_opds_favorite_authors(&books, &stats).await {
         Ok(feed) => opds::format_feed(feed),
         Err(err) => format!("{err}"),
     }
@@ -372,9 +396,18 @@ async fn root_opds_book(
     let id = param.into_inner();
     info!("/opds/book/{id})");
 
-    let book = impls::extract_book(ctx.path.clone(), id)?;
-    info!("root_opds_book =>: {}", book.display());
-    Ok(actix_files::NamedFile::open_async(book).await?)
+    match impls::extract_book(ctx.path.clone(), id) {
+        Ok(book) => {
+            let pool = ctx.statistic.lock().unwrap();
+
+            database::insert_book(&pool, id)
+                .await
+                .map_err(|err| io::Error::new(io::ErrorKind::Other, format!("{err}")))?;
+
+            Ok(actix_files::NamedFile::open_async(book).await?)
+        }
+        Err(err) => Err(io::Error::new(io::ErrorKind::Other, format!("{err}"))),
+    }
 }
 
 /*********************************************************************************/
@@ -391,7 +424,7 @@ fn get_env<T: Into<String> + Display>(name: T, default: T) -> String {
         .expect(&format!("Can't configure {}", name))
 }
 
-fn read_params() -> (String, u16, String, PathBuf) {
+fn read_params() -> (String, u16, String, String, PathBuf) {
     let addr = get_env("FB2S_ADDRESS", DEFAULT_ADDRESS);
     info!("FB2S_ADDRESS: {addr}");
 
@@ -404,8 +437,11 @@ fn read_params() -> (String, u16, String, PathBuf) {
     let database = get_env("FB2S_DATABASE", DEFAULT_DATABASE);
     info!("FB2S_DATABASE: {database}");
 
+    let statistic = get_env("FB2S_STATISTIC", DEFAULT_STATISTIC);
+    info!("FB2S_STATISTIC: {statistic}");
+
     let library = PathBuf::from(get_env("FB2S_LIBRARY", DEFAULT_LIBRARY));
     info!("FB2S_LIBRARY: {}", library.display());
 
-    return (addr, port, database, library);
+    return (addr, port, database, statistic, library);
 }

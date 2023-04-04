@@ -470,3 +470,78 @@ pub async fn root_opds_genres_authors(
 
     Ok(out)
 }
+
+pub async fn init_statistic_db(pool: &SqlitePool) -> anyhow::Result<()> {
+    let create_downloads_query = r"
+    CREATE TABLE IF NOT EXISTS downloads(
+        book_id     INTEGER NOT NULL,
+        downloaded  DATETIME DEFAULT CURRENT_TIMESTAMP
+    );";
+
+    sqlx::query(create_downloads_query).execute(pool).await?;
+    Ok(())
+}
+
+pub async fn insert_book(pool: &SqlitePool, id: u32) -> anyhow::Result<()> {
+    let insert_downloads_query = r"
+    INSERT INTO downloads(book_id)
+    VALUES (?);";
+    sqlx::query(&insert_downloads_query)
+        .bind(id)
+        .execute(pool)
+        .await?;
+    Ok(())
+}
+
+pub async fn get_favorites(pool: &SqlitePool) -> anyhow::Result<Vec<u32>> {
+    let sql = "
+    SELECT DISTINCT book_id AS id FROM downloads
+    WHERE downloaded > DATE('now', '-1 month')
+    GROUP BY book_id;";
+    let rows = sqlx::query(&sql).fetch_all(&*pool).await?;
+    let mut out = Vec::new();
+    for row in rows {
+        out.push(row.try_get("id")?);
+    }
+    Ok(out)
+}
+
+pub async fn root_opds_favorite_authors(pool: &SqlitePool, ids: Vec<u32>) -> anyhow::Result<Vec<Author>> {
+    if ids.is_empty() {
+        return Ok(vec![])
+    }
+
+    let params = format!("?{}", ", ?".repeat(ids.len()-1));
+    let sql = format!("
+        SELECT DISTINCT
+            first_names.id AS first_id,
+            middle_names.id AS middle_id,
+            last_names.id AS last_id,
+            first_names.value AS first_name,
+            middle_names.value AS middle_name,
+            last_names.value AS last_name
+        FROM authors_map
+        LEFT JOIN first_names ON first_names.id = authors_map.first_name_id
+        LEFT JOIN middle_names ON middle_names.id = authors_map.middle_name_id
+        LEFT JOIN last_names ON last_names.id = authors_map.last_name_id
+        WHERE book_id IN ({params})
+        ORDER BY 6,4,5
+    ");
+    let mut query = sqlx::query(&sql);
+    for id in &ids {
+        query = query.bind(id);
+    }
+
+
+    let rows = query.fetch_all(&*pool).await?;
+    let mut out = Vec::new();
+    for row in rows {
+        out.push(Author {
+            first_name: Value::new(row.try_get("first_id")?, row.try_get("first_name")?),
+            middle_name: Value::new(row.try_get("middle_id")?, row.try_get("middle_name")?),
+            last_name: Value::new(row.try_get("last_id")?, row.try_get("last_name")?),
+        });
+    }
+
+    Ok(out)
+}
