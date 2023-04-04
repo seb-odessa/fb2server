@@ -1,4 +1,5 @@
 /target
 *.db
 *.bak
+launch.sh
 Cargo.lock
