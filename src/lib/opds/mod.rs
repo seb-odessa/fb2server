@@ -1,6 +1,8 @@
 use chrono;
 use quick_xml::events::{BytesText, Event};
 use quick_xml::writer::Writer;
+use actix_web::Responder;
+use log::error;
 
 use std::io::Cursor;
 
@@ -58,10 +60,21 @@ impl Feed {
     }
 }
 
-pub fn format_feed(feed: Feed) -> String {
+fn format_feed(feed: Feed) -> String {
     match make_feed(feed) {
         Ok(xml) => xml,
         Err(err) => format!("{err}"),
+    }
+}
+
+pub fn handle_feed(feed_result: anyhow::Result<Feed>) -> impl Responder {
+    match feed_result {
+        Ok(feed) => format_feed(feed),
+        Err(err) => {
+            let msg = format!("{}", err);
+            error!("failure: {}", msg);
+            return msg;
+        }
     }
 }
 

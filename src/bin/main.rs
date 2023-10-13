@@ -1,7 +1,7 @@
 use actix_files::NamedFile;
 use actix_web::{get, web, App, HttpServer, Responder};
 
-use log::{info, warn};
+use log::{error, info, warn};
 use sqlx::sqlite::SqlitePool;
 
 use std::env::VarError;
@@ -92,7 +92,7 @@ async fn root_opds_nimpl() -> impl Responder {
     // Not Implemented placeholder
     let mut feed = opds::Feed::new("Not Implemented");
     feed.add("Пока не работает", "/opds/nimpl");
-    opds::format_feed(feed)
+    opds::handle_feed(Ok(feed))
 }
 
 #[get("/opds")]
@@ -103,7 +103,7 @@ async fn root_opds(_ctx: web::Data<AppState>) -> impl Responder {
     feed.add("Поиск книг по сериям", "/opds/series");
     feed.add("Поиск книг по жанрам", "/opds/meta");
     feed.add("Любимые авторы ", "/opds/favorites");
-    opds::format_feed(feed)
+    opds::handle_feed(Ok(feed))
 }
 
 #[get("/opds/authors")]
@@ -113,10 +113,8 @@ async fn root_opds_authors(ctx: web::Data<AppState>) -> impl Responder {
     let title = String::from("Поиск книг по авторам");
     let root = String::from("/opds/authors/mask");
     let pool = ctx.pool.lock().unwrap();
-    match impls::root_opds_by_mask(&pool, QueryType::Author, title, root).await {
-        Ok(feed) => opds::format_feed(feed),
-        Err(err) => format!("{err}"),
-    }
+    let feed = impls::root_opds_by_mask(&pool, QueryType::Author, title, root).await;
+    opds::handle_feed(feed)
 }
 
 #[get("/opds/series")]
@@ -126,10 +124,8 @@ async fn root_opds_series(ctx: web::Data<AppState>) -> impl Responder {
     let title = String::from("Поиск книг сериям");
     let root = String::from("/opds/series/mask");
     let pool = ctx.pool.lock().unwrap();
-    match impls::root_opds_by_mask(&pool, QueryType::Serie, title, root).await {
-        Ok(feed) => opds::format_feed(feed),
-        Err(err) => format!("{err}"),
-    }
+    let feed = impls::root_opds_by_mask(&pool, QueryType::Serie, title, root).await;
+    opds::handle_feed(feed)
 }
 
 #[get("/opds/meta")]
@@ -139,10 +135,8 @@ async fn root_opds_meta(ctx: web::Data<AppState>) -> impl Responder {
     let title = String::from("Поиск книг жанрам");
     let root = String::from("/opds/genres");
     let pool = ctx.pool.lock().unwrap();
-    match impls::root_opds_meta(&pool, &title, &root).await {
-        Ok(feed) => opds::format_feed(feed),
-        Err(err) => format!("{err}"),
-    }
+    let feed = impls::root_opds_meta(&pool, &title, &root).await;
+    opds::handle_feed(feed)
 }
 
 #[get("/opds/genres/{meta}")]
@@ -156,10 +150,8 @@ async fn root_opds_genres_meta(
     let title = String::from("Поиск книг жанрам");
     let root = String::from("/opds/genre");
     let pool = ctx.pool.lock().unwrap();
-    match impls::root_opds_genres_meta(&pool, &title, &root, &meta).await {
-        Ok(feed) => opds::format_feed(feed),
-        Err(err) => format!("{err}"),
-    }
+    let feed = impls::root_opds_genres_meta(&pool, &title, &root, &meta).await;
+    opds::handle_feed(feed)
 }
 
 #[get("/opds/genre/{genre}")]
@@ -170,7 +162,7 @@ async fn root_opds_genres_genre(path: web::Path<String>) -> impl Responder {
     let mut feed = opds::Feed::new(format!("Книги '{genre}'"));
     feed.add("По сериям", &format!("/opds/genre/series/{genre}"));
     feed.add("По авторам", &format!("/opds/genre/authors/{genre}"));
-    opds::format_feed(feed)
+    opds::handle_feed(Ok(feed))
 }
 
 #[get("/opds/genre/series/{genre}")]
@@ -182,10 +174,8 @@ async fn root_opds_genres_series(
     info!("/opds/genre/series/{genre}");
 
     let pool = ctx.pool.lock().unwrap();
-    match impls::root_opds_genres_series(&pool, &genre).await {
-        Ok(feed) => opds::format_feed(feed),
-        Err(err) => format!("{err}"),
-    }
+    let feed = impls::root_opds_genres_series(&pool, &genre).await;
+    opds::handle_feed(feed)
 }
 
 #[get("/opds/genre/authors/{genre}")]
@@ -197,10 +187,8 @@ async fn root_opds_genres_authors(
     info!("/opds/genre/authors/{genre}");
 
     let pool = ctx.pool.lock().unwrap();
-    match impls::root_opds_genres_authors(&pool, &genre).await {
-        Ok(feed) => opds::format_feed(feed),
-        Err(err) => format!("{err}"),
-    }
+    let feed = impls::root_opds_genres_authors(&pool, &genre).await;
+    opds::handle_feed(feed)
 }
 
 #[get("/opds/favorites")]
@@ -209,11 +197,8 @@ async fn root_opds_favorite_authors(ctx: web::Data<AppState>) -> impl Responder 
 
     let books = ctx.pool.lock().unwrap();
     let stats = ctx.statistic.lock().unwrap();
-
-    match impls::root_opds_favorite_authors(&books, &stats).await {
-        Ok(feed) => opds::format_feed(feed),
-        Err(err) => format!("{err}"),
-    }
+    let feed = impls::root_opds_favorite_authors(&books, &stats).await;
+    opds::handle_feed(feed)
 }
 
 #[get("/opds/authors/mask/{pattern}")]
@@ -227,10 +212,9 @@ async fn root_opds_authors_mask(
     let title = String::from("Поиск книг по авторам");
     let root = String::from("/opds/authors/mask");
     let pool = ctx.pool.lock().unwrap();
-    match impls::root_opds_search_by_mask(&pool, QueryType::Author, title, root, pattern).await {
-        Ok(feed) => opds::format_feed(feed),
-        Err(err) => format!("{err}"),
-    }
+    let feed =
+        impls::root_opds_search_by_mask(&pool, QueryType::Author, title, root, pattern).await;
+    opds::handle_feed(feed)
 }
 
 #[get("/opds/series/mask/{pattern}")]
@@ -244,10 +228,8 @@ async fn root_opds_series_mask(
     let title = String::from("Поиск книг сериям");
     let root = String::from("/opds/series/mask");
     let pool = ctx.pool.lock().unwrap();
-    match impls::root_opds_search_by_mask(&pool, QueryType::Serie, title, root, pattern).await {
-        Ok(feed) => opds::format_feed(feed),
-        Err(err) => format!("{err}"),
-    }
+    let feed = impls::root_opds_search_by_mask(&pool, QueryType::Serie, title, root, pattern).await;
+    opds::handle_feed(feed)
 }
 
 #[get("/opds/author/id/{fid}/{mid}/{lid}")]
@@ -273,7 +255,7 @@ async fn root_opds_author_id(path: web::Path<(u32, u32, u32)>) -> impl Responder
         "Книги по дате поступления",
         &format!("/opds/author/added/books/{fid}/{mid}/{lid}"),
     );
-    opds::format_feed(feed)
+    opds::handle_feed(Ok(feed))
 }
 
 #[get("/opds/serie/id/{id}")]
@@ -294,7 +276,7 @@ async fn root_opds_serie_id(path: web::Path<u32>) -> impl Responder {
         "Книги по дате поступления",
         &format!("/opds/serie/books/{id}/added"),
     );
-    opds::format_feed(feed)
+    opds::handle_feed(Ok(feed))
 }
 
 #[get("/opds/serie/books/{id}/{sort}")]
@@ -306,10 +288,8 @@ async fn root_opds_serie_books(
     info!("/opds/serie/{id}/{sort}");
 
     let pool = ctx.pool.lock().unwrap();
-    match impls::root_opds_serie_books(&pool, id, sort).await {
-        Ok(feed) => opds::format_feed(feed),
-        Err(err) => format!("{err}"),
-    }
+    let feed = impls::root_opds_serie_books(&pool, id, sort).await;
+    opds::handle_feed(feed)
 }
 
 #[get("/opds/author/series/{fid}/{mid}/{lid}")]
@@ -321,10 +301,8 @@ async fn root_opds_author_series(
     info!("/opds/author/series/{fid}/{mid}/{lid}");
 
     let pool = ctx.pool.lock().unwrap();
-    match impls::root_opds_author_series(&pool, (fid, mid, lid)).await {
-        Ok(feed) => opds::format_feed(feed),
-        Err(err) => format!("{err}"),
-    }
+    let feed = impls::root_opds_author_series(&pool, (fid, mid, lid)).await;
+    opds::handle_feed(feed)
 }
 
 #[get("/opds/author/serie/books/{fid}/{mid}/{lid}/{sid}")]
@@ -337,10 +315,8 @@ async fn root_opds_author_serie_books(
 
     let sort = authors::Sort::BySerie(sid);
     let pool = ctx.pool.lock().unwrap();
-    match impls::root_opds_author_books(&pool, (fid, mid, lid), sort).await {
-        Ok(feed) => opds::format_feed(feed),
-        Err(err) => format!("{err}"),
-    }
+    let feed = impls::root_opds_author_books(&pool, (fid, mid, lid), sort).await;
+    opds::handle_feed(feed)
 }
 
 #[get("/opds/author/nonserie/books/{fid}/{mid}/{lid}")]
@@ -352,10 +328,8 @@ async fn root_opds_author_nonserie_books(
     info!("/opds/author/nonserie/books/{fid}/{mid}/{lid}");
 
     let pool = ctx.pool.lock().unwrap();
-    match impls::root_opds_author_books(&pool, (fid, mid, lid), authors::Sort::NoSerie).await {
-        Ok(feed) => opds::format_feed(feed),
-        Err(err) => format!("{err}"),
-    }
+    let feed = impls::root_opds_author_books(&pool, (fid, mid, lid), authors::Sort::NoSerie).await;
+    opds::handle_feed(feed)
 }
 
 #[get("/opds/author/alphabet/books/{fid}/{mid}/{lid}")]
@@ -367,10 +341,8 @@ async fn root_opds_author_alphabet_books(
     info!("/opds/author/alphabet/books/{fid}/{mid}/{lid}");
 
     let pool = ctx.pool.lock().unwrap();
-    match impls::root_opds_author_books(&pool, (fid, mid, lid), authors::Sort::Alphabet).await {
-        Ok(feed) => opds::format_feed(feed),
-        Err(err) => format!("{err}"),
-    }
+    let feed = impls::root_opds_author_books(&pool, (fid, mid, lid), authors::Sort::Alphabet).await;
+    opds::handle_feed(feed)
 }
 
 #[get("/opds/author/added/books/{fid}/{mid}/{lid}")]
@@ -382,10 +354,8 @@ async fn root_opds_author_added_books(
     info!("/opds/author/added/books/{fid}/{mid}/{lid}");
 
     let pool = ctx.pool.lock().unwrap();
-    match impls::root_opds_author_books(&pool, (fid, mid, lid), authors::Sort::Added).await {
-        Ok(feed) => opds::format_feed(feed),
-        Err(err) => format!("{err}"),
-    }
+    let feed = impls::root_opds_author_books(&pool, (fid, mid, lid), authors::Sort::Added).await;
+    opds::handle_feed(feed)
 }
 
 #[get("/opds/book/{id}")]
@@ -400,13 +370,25 @@ async fn root_opds_book(
         Ok(book) => {
             let pool = ctx.statistic.lock().unwrap();
 
-            database::insert_book(&pool, id)
-                .await
-                .map_err(|err| io::Error::new(io::ErrorKind::Other, format!("{err}")))?;
-
-            Ok(actix_files::NamedFile::open_async(book).await?)
+            if let Err(err) = database::insert_book(&pool, id).await {
+                let msg = format!("{err}");
+                error!("{}", msg);
+                return Err(io::Error::new(io::ErrorKind::Other, msg));
+            }
+            match actix_files::NamedFile::open_async(book).await {
+                Ok(file) => Ok(file),
+                Err(err) => {
+                    let msg = format!("{err}");
+                    error!("{}", msg);
+                    return Err(io::Error::new(io::ErrorKind::Other, msg));
+                }
+            }
         }
-        Err(err) => Err(io::Error::new(io::ErrorKind::Other, format!("{err}"))),
+        Err(err) => {
+            let msg = format!("{err}");
+            error!("{}", msg);
+            return Err(io::Error::new(io::ErrorKind::Other, msg));
+        }
     }
 }
 
