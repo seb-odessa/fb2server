@@ -74,10 +74,10 @@ pub async fn root_opds_author_books(
         }
         Sort::Alphabet => {
             books.sort_by(|a, b| utils::fb2sort(&a.name, &b.name));
-        },
-        Sort::Added =>  {
+        }
+        Sort::Added => {
             books.sort_by(|a, b| b.date.cmp(&a.date));
-        },
+        }
         _ => {}
     }
 
@@ -96,4 +96,3 @@ pub async fn root_opds_author_books(
     }
     return Ok(feed);
 }
-

@@ -152,9 +152,7 @@ async fn root_opds_genres_meta(
 }
 
 #[get("/opds/genre/{genre}")]
-async fn root_opds_genres_genre(
-    path: web::Path<String>,
-) -> impl Responder {
+async fn root_opds_genres_genre(path: web::Path<String>) -> impl Responder {
     let genre = path.into_inner();
     info!("/opds/genre/{genre}");
 
@@ -193,10 +191,6 @@ async fn root_opds_genres_authors(
         Err(err) => format!("{err}"),
     }
 }
-
-
-
-
 
 #[get("/opds/authors/mask/{pattern}")]
 async fn root_opds_authors_mask(
@@ -382,7 +376,6 @@ async fn root_opds_book(
     info!("root_opds_book =>: {}", book.display());
     Ok(actix_files::NamedFile::open_async(book).await?)
 }
-
 
 /*********************************************************************************/
 
