@@ -1,4 +1,6 @@
 use actix_web::{get, web, App, HttpServer, Responder};
+use actix_files::NamedFile;
+
 use log::{info, warn};
 use sqlx::sqlite::SqlitePool;
 
@@ -11,6 +13,7 @@ use lib::opds;
 const DEFAULT_ADDRESS: &'static str = "localhost";
 const DEFAULT_PORT: u16 = 8080;
 const DEFAULT_DATABASE: &'static str = "books.db";
+const DEFAULT_LIBRARY: &'static str = ".";
 
 struct AppState {
     pool: Mutex<SqlitePool>,
@@ -152,21 +155,15 @@ async fn root_opds_author_alphabet_books(
 }
 
 #[get("/opds/book/{id}")]
-async fn root_opds_book(ctx: web::Data<AppState>, path: web::Path<u32>) -> impl Responder {
-    // let file_path = std::path::PathBuf::from(env!("HOME"))
-    //     .as_path()
-    //     .join(BASE_DIR)
-    //     .join(DATA_PATH)
-    //     .join(&filename.into_inner());
-
-    // let file = actix_files::NamedFile::open_async(file_path).await.unwrap();
-    // file.into_response()
-
-    format!("Not Implemented")
+async fn root_opds_book(ctx: web::Data<AppState>, id: web::Path<u32>) -> std::io::Result<NamedFile> {
+    let root = ctx.path.clone();
+    impls::root_opds_book(root, id.into_inner()).await
 }
 
 #[actix_web::main]
 async fn main() -> anyhow::Result<()> {
+    std::env::set_var("RUST_LOG", "info");
+    std::env::set_var("RUST_BACKTRACE", "1");
     env_logger::init();
 
     let (addr, port, database, library) = read_params();
@@ -202,7 +199,7 @@ fn read_params() -> (String, u16, String, PathBuf) {
     let addr = match std::env::var("FB2S_ADDRESS") {
         Ok(addr) => addr,
         Err(e) => {
-            warn!("FB2S_ADDRESS: {e}");
+            warn!("FB2S_ADDRESS: {e} will use {DEFAULT_ADDRESS}");
             String::from(DEFAULT_ADDRESS)
         }
     };
@@ -210,7 +207,7 @@ fn read_params() -> (String, u16, String, PathBuf) {
     let port = match std::env::var("FB2S_PORT") {
         Ok(string) => string.as_str().parse::<u16>().unwrap_or(DEFAULT_PORT),
         Err(e) => {
-            warn!("FB2S_PORT: {e}");
+            warn!("FB2S_PORT: {e} will use {DEFAULT_PORT}");
             DEFAULT_PORT
         }
     };
@@ -218,7 +215,7 @@ fn read_params() -> (String, u16, String, PathBuf) {
     let database = match std::env::var("FB2S_DATABASE") {
         Ok(addr) => addr,
         Err(e) => {
-            warn!("FB2S_DATABASE: {e}");
+            warn!("FB2S_DATABASE: {e} will use {DEFAULT_DATABASE}");
             String::from(DEFAULT_DATABASE)
         }
     };
@@ -226,8 +223,8 @@ fn read_params() -> (String, u16, String, PathBuf) {
     let library = match std::env::var("FB2S_LIBRARY") {
         Ok(addr) => PathBuf::from(addr),
         Err(e) => {
-            warn!("FB2S_LIBRARY: {e}");
-            PathBuf::from(".")
+            warn!("FB2S_LIBRARY: {e} will use {DEFAULT_LIBRARY}");
+            PathBuf::from(DEFAULT_LIBRARY)
         }
     };
 
