@@ -678,23 +678,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "fb2server"
-version = "0.1.0"
-dependencies = [
- "actix-files",
- "actix-web",
- "anyhow",
- "chrono",
- "env_logger",
- "lazy_static",
- "log",
- "quick-xml",
- "regex",
- "sqlx",
- "zip",
-]
-
-[[package]]
 name = "flate2"
 version = "1.0.24"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1251,6 +1234,23 @@ name = "opaque-debug"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "624a8340c38c1b80fd549087862da4ba43e08858af025b236e509b6649fc13d5"
+
+[[package]]
+name = "opds_server"
+version = "0.1.0"
+dependencies = [
+ "actix-files",
+ "actix-web",
+ "anyhow",
+ "chrono",
+ "env_logger",
+ "lazy_static",
+ "log",
+ "quick-xml",
+ "regex",
+ "sqlx",
+ "zip",
+]
 
 [[package]]
 name = "openssl"
