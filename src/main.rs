@@ -4,6 +4,7 @@ use log::{info, warn};
 use quick_xml::events::{BytesText, Event};
 use quick_xml::writer::Writer;
 use sqlx::sqlite::SqlitePool;
+use sqlx::query::Query;
 use sqlx::Row;
 
 use std::cmp::*;
@@ -20,12 +21,22 @@ const XML_HEAD: &'static str = r#"xml version="1.0" encoding="utf-8""#;
 struct AppState {
     // counter: Mutex<i32>,
     pool: Mutex<SqlitePool>,
+    // names: Query<'a, DB, A>,
 }
 impl AppState {
+    const GET_BY_PATTERNS: &'static str = r#"
+            SELECT DISTINCT substr(name, 1, {len}) AS name
+            FROM last_names
+            WHERE name LIKE $1
+            ORDER BY 1
+        "#;
+
     pub fn new(pool: SqlitePool) -> Self {
+
         Self {
             // counter: Mutex::new(0),
             pool: Mutex::new(pool),
+            // names: sqlx::query(AppState::GET_BY_PATTERNS),
         }
     }
 }
@@ -115,71 +126,81 @@ fn sorted(mut patterns: Vec<String>) -> Vec<String> {
 #[get("/opds/authors")]
 async fn authors_root(ctx: web::Data<AppState>) -> impl Responder {
     info!("/opds/authors");
-    match make_patterns(ctx, String::from("")).await {
+    match make_patterns(&ctx, &String::from("")).await {
         Ok(patterns) => {
             let mut feed = Feed::new("Поиск книг по авторам");
             for pattern in sorted(patterns) {
                 if pattern.is_empty() {
                     continue;
                 }
-                feed.add(
-                    format!("Авторы на '{pattern}'"),
-                    format!("/opds/authors/{pattern}"),
-                );
+                feed.add(format!("{pattern}..."), format!("/opds/authors/{pattern}"));
             }
             format_feed(feed)
         }
         Err(err) => format!("{err}"),
     }
+}
+
+fn fmt_name(author: &Author) -> String {
+    if author.middle_name.is_empty() {
+        format!("{} {}", author.first_name, author.last_name)
+    } else {
+        format!(
+            "{} {} {}",
+            author.first_name, author.middle_name, author.last_name
+        )
+    }
+}
+
+fn fmt_link(author: &Author) -> String {
+    format!(
+        "/opds/author/{}/{}/{}",
+        author.first_id, author.middle_id, author.last_id
+    )
 }
 
 #[get("/opds/authors/{pattern}")]
 async fn authors_by_mask(ctx: web::Data<AppState>, path: web::Path<String>) -> impl Responder {
-    let pattern = path.into_inner();
+    let mut pattern = path.into_inner();
     info!("/opds/authors/{pattern}");
 
-    match make_patterns(ctx.clone(), pattern.clone()).await {
-        Ok(patterns) => {
-            let mut feed = Feed::new("Поиск книг по авторам");
-            if let Ok(id) = get_last_name_id(ctx, &pattern).await {
-                feed.add(
-                    format!("Авторы '{pattern}' - {id}"),
-                    format!("/opds/author/{id}"),
-                );
-            }
+    let mut feed = Feed::new("Поиск книг по авторам");
 
-            for prefix in sorted(patterns) {
-                if pattern.ne(&prefix) {
-                    feed.add(
-                        format!("Авторы на '{prefix}'"),
-                        format!("/opds/authors/{prefix}"),
-                    );
+    loop {
+        match find_authors(&ctx, &pattern).await {
+            Ok(authors) => {
+                for author in authors {
+                    feed.add(fmt_name(&author), fmt_link(&author));
                 }
             }
-            format_feed(feed)
+            Err(err) => return format!("{err}"),
         }
-        Err(err) => format!("{err}"),
-    }
-}
 
-#[get("/opds/author/{id}")]
-async fn authors_by_id(ctx: web::Data<AppState>, path: web::Path<u32>) -> impl Responder {
-    let id = path.into_inner();
-    info!("/opds/authors/{id}");
+        match make_patterns(&ctx, &pattern).await {
+            Ok(patterns) => {
+                let tile = patterns
+                    .into_iter()
+                    .filter(|name| *name != pattern)
+                    .collect::<Vec<String>>();
 
-    match find_authors(ctx.clone(), id).await {
-        Ok(authors) => {
-            let mut feed = Feed::new("Поиск книг по авторам");
-            for author in authors {
-                feed.add(
-                    format!("{} {} {}", author.first_name, author.middle_name, author.last_name),
-                    format!("/opds/author/{}/{}/{}", author.first_id, author.middle_id, author.last_id),
-                );
+                if tile.is_empty() {
+                    break;
+                } else if 1 == tile.len() {
+                    pattern = tile[0].clone();
+                } else {
+                    for prefix in sorted(tile) {
+                        if pattern.ne(&prefix) {
+                            feed.add(format!("{prefix}..."), format!("/opds/authors/{prefix}"));
+                        }
+                    }
+                    break;
+                }
             }
-            format_feed(feed)
+            Err(err) => return format!("{err}"),
         }
-        Err(err) => format!("{err}"),
     }
+
+    format_feed(feed)
 }
 
 #[actix_web::main] // or #[tokio::main]
@@ -199,7 +220,6 @@ async fn main() -> anyhow::Result<()> {
             .service(opds)
             .service(authors_root)
             .service(authors_by_mask)
-            .service(authors_by_id)
     })
     .bind((addr.as_str(), port))?
     .run()
@@ -283,27 +303,12 @@ fn make_feed(feed: Feed) -> anyhow::Result<String> {
     Ok(String::from_utf8_lossy(&w.into_inner().into_inner()).into_owned())
 }
 
-async fn get_last_name_id(ctx: web::Data<AppState>, name: &String) -> anyhow::Result<u32> {
-    let sql = format!(
-        r#"
-            SELECT id 
-            FROM last_names 
-            WHERE name = "{name}"
-        "#
-    );
-    let pool = ctx.pool.try_lock().unwrap();
-    let row = sqlx::query(&sql).fetch_one(&*pool).await?;
-    let id: u32 = row.try_get("id")?;
-
-    Ok(id)
-}
-
-async fn make_patterns(ctx: web::Data<AppState>, pattern: String) -> anyhow::Result<Vec<String>> {
+async fn make_patterns(ctx: &web::Data<AppState>, pattern: &String) -> anyhow::Result<Vec<String>> {
     let len = pattern.chars().count() + 1;
     let sql = format!(
         r#"
-            SELECT DISTINCT substr(name, 1, {len}) AS name 
-            FROM last_names 
+            SELECT DISTINCT substr(name, 1, {len}) AS name
+            FROM last_names
             WHERE name LIKE "{pattern}%"
             ORDER BY 1
         "#
@@ -329,21 +334,22 @@ struct Author {
     pub last_name: String,
 }
 
-async fn find_authors(ctx: web::Data<AppState>, id: u32) -> anyhow::Result<Vec<Author>> {
+async fn find_authors(ctx: &web::Data<AppState>, name: &String) -> anyhow::Result<Vec<Author>> {
     let sql = format!(
         r#"
-            SELECT DISTINCT 
-                first_name_id AS first_id, 
-                middle_name_id AS middle_id, 
-                last_name_id AS last_id, 
-                first_names.name AS first_name, 
-                middle_names.name AS middle_name, 
+            SELECT DISTINCT
+                first_name_id AS first_id,
+                middle_name_id AS middle_id,
+                last_name_id AS last_id,
+                first_names.name AS first_name,
+                middle_names.name AS middle_name,
                 last_names.name AS last_name
             FROM authors_map
             LEFT JOIN first_names ON first_names.id = first_name_id
             LEFT JOIN middle_names ON middle_names.id = middle_name_id
             LEFT JOIN last_names ON last_names.id = last_name_id
-            WHERE last_name_id = {id}
+            WHERE last_names.name = "{name}"
+            ORDER BY 4, 5, 6;
         "#
     );
 
@@ -363,7 +369,6 @@ async fn find_authors(ctx: web::Data<AppState>, id: u32) -> anyhow::Result<Vec<A
 
     Ok(out)
 }
-
 
 #[cfg(test)]
 mod tests {
