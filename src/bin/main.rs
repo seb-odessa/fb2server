@@ -11,16 +11,13 @@ const DEFAULT_ADDRESS: &'static str = "localhost";
 const DEFAULT_PORT: u16 = 8080;
 const DEFAULT_DATABASE: &'static str = "books.db";
 
-// #[derive(Clone)]
+
 struct AppState {
-    // counter: Mutex<i32>,
     pool: Mutex<SqlitePool>,
-    // names: Query<'a, DB, A>,
 }
 impl AppState {
     pub fn new(pool: SqlitePool) -> Self {
         Self {
-            // counter: Mutex::new(0),
             pool: Mutex::new(pool),
         }
     }
@@ -118,7 +115,7 @@ async fn root_opds_author_serie_books(
     }
 }
 
-#[actix_web::main] // or #[tokio::main]
+#[actix_web::main] 
 async fn main() -> anyhow::Result<()> {
     env_logger::init();
 
