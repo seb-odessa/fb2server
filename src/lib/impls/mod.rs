@@ -25,6 +25,8 @@ pub use books::extract_book;
 pub mod genres;
 pub use genres::root_opds_meta;
 pub use genres::root_opds_genres_meta;
+pub use genres::root_opds_genres_series;
+pub use genres::root_opds_genres_authors;
 
 pub async fn root_opds_by_mask(
     pool: &SqlitePool,

@@ -32,6 +32,51 @@ impl AppState {
     }
 }
 
+#[actix_web::main]
+async fn main() -> anyhow::Result<()> {
+    std::env::set_var("RUST_LOG", "info");
+    std::env::set_var("RUST_BACKTRACE", "1");
+    env_logger::init();
+
+    let (addr, port, database, library) = read_params();
+    let pool = SqlitePool::connect(&database).await?;
+    let ctx = web::Data::new(AppState::new(pool, library));
+
+    info!("OPDS Server will ready at http://{addr}:{port}/opds");
+    HttpServer::new(move || {
+        App::new()
+            .app_data(ctx.clone())
+            .service(root_opds)
+            .service(root_opds_nimpl)
+            // Books by Authors
+            .service(root_opds_authors)
+            .service(root_opds_authors_mask)
+            .service(root_opds_author_id)
+            .service(root_opds_author_series)
+            .service(root_opds_author_serie_books)
+            .service(root_opds_author_nonserie_books)
+            .service(root_opds_author_alphabet_books)
+            .service(root_opds_author_added_books)
+            // Books by Series
+            .service(root_opds_series)
+            .service(root_opds_series_mask)
+            .service(root_opds_serie_id)
+            .service(root_opds_serie_books)
+            // Books by Genres
+            .service(root_opds_meta)
+            .service(root_opds_genres_meta)
+            .service(root_opds_genres_genre)
+            .service(root_opds_genres_series)
+            .service(root_opds_genres_authors)
+            // Books
+            .service(root_opds_book)
+    })
+    .bind((addr.as_str(), port))?
+    .run()
+    .await
+    .map_err(anyhow::Error::from)
+}
+
 #[get("/opds/nimpl")]
 async fn root_opds_nimpl() -> impl Responder {
     // Not Implemented placeholder
@@ -90,18 +135,68 @@ async fn root_opds_meta(ctx: web::Data<AppState>) -> impl Responder {
 }
 
 #[get("/opds/genres/{meta}")]
-async fn root_opds_genres_meta(ctx: web::Data<AppState>, path: web::Path<String>) -> impl Responder {
+async fn root_opds_genres_meta(
+    ctx: web::Data<AppState>,
+    path: web::Path<String>,
+) -> impl Responder {
     let meta = path.into_inner();
     info!("/opds/genres/{meta}");
 
     let title = String::from("Поиск книг жанрам");
-    let root = String::from("/opds/genres/id");
+    let root = String::from("/opds/genre");
     let pool = ctx.pool.lock().unwrap();
     match impls::root_opds_genres_meta(&pool, &title, &root, &meta).await {
         Ok(feed) => opds::format_feed(feed),
         Err(err) => format!("{err}"),
     }
 }
+
+#[get("/opds/genre/{genre}")]
+async fn root_opds_genres_genre(
+    path: web::Path<String>,
+) -> impl Responder {
+    let genre = path.into_inner();
+    info!("/opds/genre/{genre}");
+
+    let mut feed = opds::Feed::new(format!("Книги '{genre}'"));
+    feed.add("По сериям", &format!("/opds/genre/series/{genre}"));
+    feed.add("По авторам", &format!("/opds/genre/authors/{genre}"));
+    opds::format_feed(feed)
+}
+
+#[get("/opds/genre/series/{genre}")]
+async fn root_opds_genres_series(
+    ctx: web::Data<AppState>,
+    path: web::Path<String>,
+) -> impl Responder {
+    let genre = path.into_inner();
+    info!("/opds/genre/series/{genre}");
+
+    let pool = ctx.pool.lock().unwrap();
+    match impls::root_opds_genres_series(&pool, &genre).await {
+        Ok(feed) => opds::format_feed(feed),
+        Err(err) => format!("{err}"),
+    }
+}
+
+#[get("/opds/genre/authors/{genre}")]
+async fn root_opds_genres_authors(
+    ctx: web::Data<AppState>,
+    path: web::Path<String>,
+) -> impl Responder {
+    let genre = path.into_inner();
+    info!("/opds/genre/authors/{genre}");
+
+    let pool = ctx.pool.lock().unwrap();
+    match impls::root_opds_genres_authors(&pool, &genre).await {
+        Ok(feed) => opds::format_feed(feed),
+        Err(err) => format!("{err}"),
+    }
+}
+
+
+
+
 
 #[get("/opds/authors/mask/{pattern}")]
 async fn root_opds_authors_mask(
@@ -288,47 +383,6 @@ async fn root_opds_book(
     Ok(actix_files::NamedFile::open_async(book).await?)
 }
 
-#[actix_web::main]
-async fn main() -> anyhow::Result<()> {
-    std::env::set_var("RUST_LOG", "info");
-    std::env::set_var("RUST_BACKTRACE", "1");
-    env_logger::init();
-
-    let (addr, port, database, library) = read_params();
-    let pool = SqlitePool::connect(&database).await?;
-    let ctx = web::Data::new(AppState::new(pool, library));
-
-    info!("OPDS Server will ready at http://{addr}:{port}/opds");
-    HttpServer::new(move || {
-        App::new()
-            .app_data(ctx.clone())
-            .service(root_opds)
-            .service(root_opds_nimpl)
-            // Books by Authors
-            .service(root_opds_authors)
-            .service(root_opds_authors_mask)
-            .service(root_opds_author_id)
-            .service(root_opds_author_series)
-            .service(root_opds_author_serie_books)
-            .service(root_opds_author_nonserie_books)
-            .service(root_opds_author_alphabet_books)
-            .service(root_opds_author_added_books)
-            // Books by Series
-            .service(root_opds_series)
-            .service(root_opds_series_mask)
-            .service(root_opds_serie_id)
-            .service(root_opds_serie_books)
-            // Books by Genres
-            .service(root_opds_meta)
-            .service(root_opds_genres_meta)
-            // Books
-            .service(root_opds_book)
-    })
-    .bind((addr.as_str(), port))?
-    .run()
-    .await
-    .map_err(anyhow::Error::from)
-}
 
 /*********************************************************************************/
 
