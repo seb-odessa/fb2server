@@ -44,15 +44,15 @@ pub async fn root_opds_authors_mask(
     loop {
         // Prepare authors list with exact surename (lastname)
         let mut authors = database::find_authors(&pool, &pattern).await?;
-        authors.sort_by(|a, b| utils::fb2sort(&a.first_name, &b.first_name));
+        authors.sort_by(|a, b| utils::fb2sort(&a.first_name.value, &b.first_name.value));
         for author in authors {
             let title = format!(
                 "{} {} {}",
-                author.last_name, author.first_name, author.middle_name,
+                author.last_name.value, author.first_name.value, author.middle_name.value,
             );
             let link = format!(
                 "/opds/author/id/{}/{}/{}",
-                author.first_id, author.middle_id, author.last_id
+                author.first_name.id, author.middle_name.id, author.last_name.id
             );
             feed.add(title, link);
         }
@@ -151,6 +151,23 @@ pub async fn root_opds_author_alphabet_books(
     let mut books = database::author_alphabet_books(&pool, (fid, mid, lid)).await?;
     books.sort_by(|a, b| utils::fb2sort(&a.name, &b.name));
 
+    for book in books {
+        let id = book.id;
+        let name = book.name;
+        let date = book.date;
+
+        feed.book(format!("{name} ({date})"), format!("/opds/book/{id}"));
+    }
+    return Ok(feed);
+}
+
+pub async fn root_opds_author_added_books(
+    pool: &SqlitePool,
+    ids: (u32, u32, u32),
+) -> anyhow::Result<Feed> {
+    let (fid, mid, lid) = ids;
+    let mut feed = Feed::new("Книги");
+    let books = database::root_opds_author_added_books(&pool, (fid, mid, lid)).await?;
     for book in books {
         let id = book.id;
         let name = book.name;

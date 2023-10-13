@@ -85,7 +85,10 @@ async fn root_opds_author_id(path: web::Path<(u32, u32, u32)>) -> impl Responder
         "Книги по алфавиту",
         &format!("/opds/author/alphabet/books/{fid}/{mid}/{lid}"),
     );
-
+    feed.add(
+        "Книги по дате поступления",
+        &format!("/opds/author/added/books/{fid}/{mid}/{lid}"),
+    );
     opds::format_feed(feed)
 }
 
@@ -156,6 +159,21 @@ async fn root_opds_author_alphabet_books(
     }
 }
 
+#[get("/opds/author/added/books/{fid}/{mid}/{lid}")]
+async fn root_opds_author_added_books(
+    ctx: web::Data<AppState>,
+    path: web::Path<(u32, u32, u32)>,
+) -> impl Responder {
+    let (fid, mid, lid) = path.into_inner();
+    info!("/opds/author/added/books/{fid}/{mid}/{lid}");
+
+    let pool = ctx.pool.lock().unwrap();
+    match impls::root_opds_author_added_books(&pool, (fid, mid, lid)).await {
+        Ok(feed) => opds::format_feed(feed),
+        Err(err) => format!("{err}"),
+    }
+}
+
 #[get("/opds/book/{id}")]
 async fn root_opds_book(
     ctx: web::Data<AppState>,
@@ -192,6 +210,7 @@ async fn main() -> anyhow::Result<()> {
             .service(root_opds_author_serie_books)
             .service(root_opds_author_nonserie_books)
             .service(root_opds_author_alphabet_books)
+            .service(root_opds_author_added_books)
             .service(root_opds_book)
     })
     .bind((addr.as_str(), port))?
