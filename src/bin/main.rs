@@ -28,7 +28,7 @@ impl AppState {
 }
 
 #[get("/opds")]
-async fn root() -> impl Responder {
+async fn root_opds() -> impl Responder {
     info!("/opds");
     let mut feed = opds::Feed::new("Catalog Root");
     feed.add("Поиск книг по авторам", "/opds/authors");
@@ -38,7 +38,7 @@ async fn root() -> impl Responder {
 }
 
 #[get("/opds/authors")]
-async fn authors_root(ctx: web::Data<AppState>) -> impl Responder {
+async fn root_opds_authors(ctx: web::Data<AppState>) -> impl Responder {
     info!("/opds/authors");
 
     let pool = ctx.pool.lock().unwrap();
@@ -47,7 +47,10 @@ async fn authors_root(ctx: web::Data<AppState>) -> impl Responder {
         Ok(patterns) => {
             for pattern in utils::sorted(patterns) {
                 if !pattern.is_empty() {
-                    feed.add(format!("{pattern}..."), format!("/opds/authors/{pattern}"));
+                    feed.add(
+                        format!("{pattern}..."),
+                        format!("/opds/authors/mask/{pattern}"),
+                    );
                 }
             }
         }
@@ -56,10 +59,13 @@ async fn authors_root(ctx: web::Data<AppState>) -> impl Responder {
     opds::format_feed(feed)
 }
 
-#[get("/opds/authors/{pattern}")]
-async fn authors_by_mask(ctx: web::Data<AppState>, path: web::Path<String>) -> impl Responder {
+#[get("/opds/authors/mask/{pattern}")]
+async fn root_opds_authors_mask(
+    ctx: web::Data<AppState>,
+    path: web::Path<String>,
+) -> impl Responder {
     let mut pattern = path.into_inner();
-    info!("/opds/authors/{pattern}");
+    info!("/opds/authors/mask/{pattern}");
 
     let pool = ctx.pool.lock().unwrap();
     let mut feed = opds::Feed::new("Поиск книг по авторам");
@@ -86,7 +92,7 @@ async fn authors_by_mask(ctx: web::Data<AppState>, path: web::Path<String>) -> i
                     std::mem::swap(&mut pattern, &mut tail[0]);
                 } else {
                     for prefix in utils::sorted(tail) {
-                        feed.add(format!("{prefix}..."), format!("/opds/authors/{prefix}"));
+                        feed.add(format!("{prefix}..."), format!("/opds/authors/mask/{prefix}"));
                     }
                     break;
                 }
@@ -98,13 +104,13 @@ async fn authors_by_mask(ctx: web::Data<AppState>, path: web::Path<String>) -> i
     opds::format_feed(feed)
 }
 
-#[get("/opds/author_books/{fid}/{mid}/{lid}")]
-async fn author_books(
+#[get("/opds/author/id/{fid}/{mid}/{lid}")]
+async fn root_opds_author_id(
     ctx: web::Data<AppState>,
     path: web::Path<(u32, u32, u32)>,
 ) -> impl Responder {
     let (fid, mid, lid) = path.into_inner();
-    info!("/opds/author_books/{fid}/{mid}/{lid}");
+    info!("/opds/author/id/{fid}/{mid}/{lid}");
 
     let pool = ctx.pool.lock().unwrap();
     let mut feed = opds::Feed::new("Книги автора");
@@ -126,10 +132,10 @@ async fn main() -> anyhow::Result<()> {
     HttpServer::new(move || {
         App::new()
             .app_data(ctx.clone())
-            .service(root)
-            .service(authors_root)
-            .service(authors_by_mask)
-            .service(author_books)
+            .service(root_opds)
+            .service(root_opds_authors)
+            .service(root_opds_authors_mask)
+            .service(root_opds_author_id)
     })
     .bind((addr.as_str(), port))?
     .run()
@@ -173,15 +179,19 @@ fn fmt_name(author: &database::Author) -> String {
     } else {
         format!(
             "{} {} {} [{}/{}/{}]",
-            author.first_name, author.middle_name, author.last_name
-            ,author.first_id, author.middle_id, author.last_id
+            author.first_name,
+            author.middle_name,
+            author.last_name,
+            author.first_id,
+            author.middle_id,
+            author.last_id
         )
     }
 }
 
 fn fmt_link(author: &database::Author) -> String {
     format!(
-        "/opds/author/{}/{}/{}",
+        "/opds/author/id/{}/{}/{}",
         author.first_id, author.middle_id, author.last_id
     )
 }

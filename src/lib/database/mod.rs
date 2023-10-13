@@ -14,9 +14,9 @@ pub async fn make_patterns(pool: &SqlitePool, pattern: &String) -> anyhow::Resul
     let len = pattern.chars().count() + 1;
     let sql = format!(
         r#"
-            SELECT DISTINCT substr(name, 1, {len}) AS name
+            SELECT DISTINCT substr(value, 1, {len}) AS name
             FROM last_names
-            WHERE name LIKE "{pattern}%"
+            WHERE value LIKE "{pattern}%"
             ORDER BY 1
         "#
     );
@@ -38,14 +38,14 @@ pub async fn find_authors(pool: &SqlitePool, name: &String) -> anyhow::Result<Ve
                 first_name_id AS first_id,
                 middle_name_id AS middle_id,
                 last_name_id AS last_id,
-                first_names.name AS first_name,
-                middle_names.name AS middle_name,
-                last_names.name AS last_name
+                first_names.value AS first_name,
+                middle_names.value AS middle_name,
+                last_names.value AS last_name
             FROM authors_map
             LEFT JOIN first_names ON first_names.id = first_name_id
             LEFT JOIN middle_names ON middle_names.id = middle_name_id
             LEFT JOIN last_names ON last_names.id = last_name_id
-            WHERE last_names.name = "{name}"
+            WHERE last_names.value = "{name}"
             ORDER BY 4, 5, 6;
         "#
     );
