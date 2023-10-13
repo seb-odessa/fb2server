@@ -1,4 +1,3 @@
-
 use std::collections::HashSet;
 
 use sqlx::sqlite::SqlitePool;
@@ -82,7 +81,7 @@ pub async fn root_opds_author_series(
 ) -> anyhow::Result<Feed> {
     let (fid, mid, lid) = ids;
     let author = database::author(&pool, (fid, mid, lid)).await?;
-    let mut feed = Feed::new(author);
+    let mut feed = Feed::new(&author);
     let mut series = database::author_series(&pool, (fid, mid, lid)).await?;
     series.sort_by(|a, b| utils::fb2sort(&a.name, &b.name));
 
@@ -95,6 +94,10 @@ pub async fn root_opds_author_series(
             format!("/opds/author/serie/books/{fid}/{mid}/{lid}/{sid}"),
         );
     }
+    feed.add(
+        author,
+        format!("/opds/author/id/{fid}/{mid}/{lid}"),
+    );
     return Ok(feed);
 }
 
@@ -111,8 +114,50 @@ pub async fn root_opds_author_serie_books(
         let name = book.name;
         let date = book.date;
 
-        feed.add(
-            format!("{num} - {name} ({date}) {id}"),
+        feed.book(
+            format!("{num} - {name} ({date})"),
+            format!("/opds/book/{id}"),
+        );
+    }
+    return Ok(feed);
+}
+
+pub async fn root_opds_author_nonserie_books(
+    pool: &SqlitePool,
+    ids: (u32, u32, u32),
+) -> anyhow::Result<Feed> {
+    let (fid, mid, lid) = ids;
+    let mut feed = Feed::new("Книги");
+    let books = database::author_nonserie_books(&pool, (fid, mid, lid)).await?;
+    for book in books {
+        let id = book.id;
+        let name = book.name;
+        let date = book.date;
+
+        feed.book(
+            format!("{name} ({date})"),
+            format!("/opds/book/{id}"),
+        );
+    }
+    return Ok(feed);
+}
+
+pub async fn root_opds_author_alphabet_books(
+    pool: &SqlitePool,
+    ids: (u32, u32, u32),
+) -> anyhow::Result<Feed> {
+    let (fid, mid, lid) = ids;
+    let mut feed = Feed::new("Книги");
+    let mut books = database::author_alphabet_books(&pool, (fid, mid, lid)).await?;
+    books.sort_by(|a, b| utils::fb2sort(&a.name, &b.name));
+    
+    for book in books {
+        let id = book.id;
+        let name = book.name;
+        let date = book.date;
+
+        feed.book(
+            format!("{name} ({date})"),
             format!("/opds/book/{id}"),
         );
     }
