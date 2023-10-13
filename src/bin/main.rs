@@ -46,7 +46,7 @@ async fn root_opds() -> impl Responder {
     let mut feed = opds::Feed::new("Catalog Root");
     feed.add("Поиск книг по авторам", "/opds/authors");
     feed.add("Поиск книг по сериям", "/opds/series");
-    feed.add("Поиск книг по жанрам", "/opds/genres");
+    feed.add("Поиск книг по жанрам", "/opds/meta");
     opds::format_feed(feed)
 }
 
@@ -71,6 +71,33 @@ async fn root_opds_series(ctx: web::Data<AppState>) -> impl Responder {
     let root = String::from("/opds/series/mask");
     let pool = ctx.pool.lock().unwrap();
     match impls::root_opds_by_mask(&pool, QueryType::Serie, title, root).await {
+        Ok(feed) => opds::format_feed(feed),
+        Err(err) => format!("{err}"),
+    }
+}
+
+#[get("/opds/meta")]
+async fn root_opds_meta(ctx: web::Data<AppState>) -> impl Responder {
+    info!("/opds/meta");
+
+    let title = String::from("Поиск книг жанрам");
+    let root = String::from("/opds/genres");
+    let pool = ctx.pool.lock().unwrap();
+    match impls::root_opds_meta(&pool, &title, &root).await {
+        Ok(feed) => opds::format_feed(feed),
+        Err(err) => format!("{err}"),
+    }
+}
+
+#[get("/opds/genres/{meta}")]
+async fn root_opds_genres_meta(ctx: web::Data<AppState>, path: web::Path<String>) -> impl Responder {
+    let meta = path.into_inner();
+    info!("/opds/genres/{meta}");
+
+    let title = String::from("Поиск книг жанрам");
+    let root = String::from("/opds/genres/id");
+    let pool = ctx.pool.lock().unwrap();
+    match impls::root_opds_genres_meta(&pool, &title, &root, &meta).await {
         Ok(feed) => opds::format_feed(feed),
         Err(err) => format!("{err}"),
     }
@@ -291,6 +318,9 @@ async fn main() -> anyhow::Result<()> {
             .service(root_opds_series_mask)
             .service(root_opds_serie_id)
             .service(root_opds_serie_books)
+            // Books by Genres
+            .service(root_opds_meta)
+            .service(root_opds_genres_meta)
             // Books
             .service(root_opds_book)
     })

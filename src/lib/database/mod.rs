@@ -345,7 +345,6 @@ pub async fn root_opds_author_added_books(
     Ok(out)
 }
 
-
 pub async fn root_opds_serie_books(pool: &SqlitePool, id: u32) -> anyhow::Result<Vec<BookSerie>> {
     let sql = r#"
     SELECT
@@ -367,10 +366,7 @@ pub async fn root_opds_serie_books(pool: &SqlitePool, id: u32) -> anyhow::Result
     WHERE series.id = $1
     ORDER BY 2, 3, 5, 6;
     "#;
-    let rows = sqlx::query(&sql)
-        .bind(id)
-        .fetch_all(&*pool)
-        .await?;
+    let rows = sqlx::query(&sql).bind(id).fetch_all(&*pool).await?;
     let mut out = Vec::new();
     for row in rows {
         out.push(BookSerie {
@@ -383,5 +379,25 @@ pub async fn root_opds_serie_books(pool: &SqlitePool, id: u32) -> anyhow::Result
         });
     }
 
+    Ok(out)
+}
+
+pub async fn genres_meta(pool: &SqlitePool) -> anyhow::Result<Vec<String>> {
+    let sql = "SELECT DISTINCT meta FROM genres_def ORDER BY 1;";
+    let rows = sqlx::query(&sql).fetch_all(&*pool).await?;
+    let mut out = Vec::new();
+    for row in rows {
+        out.push(row.try_get("meta")?);
+    }
+    Ok(out)
+}
+
+pub async fn genres_by_meta(pool: &SqlitePool, meta: &String) -> anyhow::Result<Vec<String>> {
+    let sql = "SELECT DISTINCT genre FROM genres_def WHERE meta = $1 ORDER BY 1;";
+    let rows = sqlx::query(&sql).bind(meta).fetch_all(&*pool).await?;
+    let mut out = Vec::new();
+    for row in rows {
+        out.push(row.try_get("genre")?);
+    }
     Ok(out)
 }
