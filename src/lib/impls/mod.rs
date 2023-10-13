@@ -1,6 +1,7 @@
 use sqlx::sqlite::SqlitePool;
 use std::collections::HashSet;
 
+
 use crate::database;
 use crate::database::QueryType;
 use crate::opds::Feed;
@@ -91,4 +92,24 @@ pub async fn root_opds_search_by_mask(
     }
 
     Ok(feed)
+}
+
+pub async fn root_opds_favorite_authors(books: &SqlitePool, statistic: &SqlitePool) -> anyhow::Result<Feed> {
+
+    let ids = database::get_favorites(statistic).await?;
+    let mut feed = Feed::new("Favorites");
+    let authors = database::root_opds_favorite_authors(books, ids).await?;
+
+    for author in authors {
+        let title = format!(
+            "{} {} {}",
+            author.last_name.value, author.first_name.value, author.middle_name.value,
+        );
+        let link = format!(
+            "/opds/author/id/{}/{}/{}",
+            author.first_name.id, author.middle_name.id, author.last_name.id
+        );
+        feed.add(title, link);
+    }
+    return Ok(feed);
 }

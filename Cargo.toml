@@ -13,15 +13,15 @@ path = "src/bin/main.rs"
 
 [dependencies]
     anyhow = "1.0"
-    actix-web = "4.2"
-    actix-files = "0.6.2"
+    actix-web = "4"
+    actix-files = "0.6"
     sqlx = { version = "0.6", features = [ "runtime-actix-native-tls", "sqlite" ] }
     log = "0.4"
-    env_logger = "0.10.0"
-    quick-xml = "0.26.0"
+    env_logger = "0.10"
+    quick-xml = "0.28"
     chrono = "0.4"
-    lazy_static = "1.4.0"
-    regex = "1.7.0"
-    zip = "0.6.3"
-    itertools = "0.10.5"
+    lazy_static = "1.4"
+    regex = "1.7"
+    zip = "0.6"
+    itertools = "0.10"
 
