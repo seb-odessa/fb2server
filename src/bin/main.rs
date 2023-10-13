@@ -11,6 +11,7 @@ use std::sync::Mutex;
 
 use lib::database::QueryType;
 use lib::impls;
+use lib::impls::authors;
 use lib::opds;
 
 const DEFAULT_ADDRESS: &'static str = "localhost";
@@ -157,7 +158,10 @@ async fn root_opds_serie_id(path: web::Path<u32>) -> impl Responder {
 }
 
 #[get("/opds/serie/books/{id}/{sort}")]
-async fn root_opds_serie_books(ctx: web::Data<AppState>,path: web::Path<(u32, String)>) -> impl Responder {
+async fn root_opds_serie_books(
+    ctx: web::Data<AppState>,
+    path: web::Path<(u32, String)>,
+) -> impl Responder {
     let (id, sort) = path.into_inner();
     info!("/opds/serie/{id}/{sort}");
 
@@ -191,8 +195,9 @@ async fn root_opds_author_serie_books(
     let (fid, mid, lid, sid) = path.into_inner();
     info!("/opds/author/serie/books/{fid}/{mid}/{lid}/{sid}");
 
+    let sort = authors::Sort::BySerie(sid);
     let pool = ctx.pool.lock().unwrap();
-    match impls::root_opds_author_serie_books(&pool, (fid, mid, lid, sid)).await {
+    match impls::root_opds_author_books(&pool, (fid, mid, lid), sort).await {
         Ok(feed) => opds::format_feed(feed),
         Err(err) => format!("{err}"),
     }
@@ -207,7 +212,7 @@ async fn root_opds_author_nonserie_books(
     info!("/opds/author/nonserie/books/{fid}/{mid}/{lid}");
 
     let pool = ctx.pool.lock().unwrap();
-    match impls::root_opds_author_nonserie_books(&pool, (fid, mid, lid)).await {
+    match impls::root_opds_author_books(&pool, (fid, mid, lid), authors::Sort::NoSerie).await {
         Ok(feed) => opds::format_feed(feed),
         Err(err) => format!("{err}"),
     }
@@ -222,7 +227,7 @@ async fn root_opds_author_alphabet_books(
     info!("/opds/author/alphabet/books/{fid}/{mid}/{lid}");
 
     let pool = ctx.pool.lock().unwrap();
-    match impls::root_opds_author_alphabet_books(&pool, (fid, mid, lid)).await {
+    match impls::root_opds_author_books(&pool, (fid, mid, lid), authors::Sort::Alphabet).await {
         Ok(feed) => opds::format_feed(feed),
         Err(err) => format!("{err}"),
     }
@@ -237,7 +242,7 @@ async fn root_opds_author_added_books(
     info!("/opds/author/added/books/{fid}/{mid}/{lid}");
 
     let pool = ctx.pool.lock().unwrap();
-    match impls::root_opds_author_added_books(&pool, (fid, mid, lid)).await {
+    match impls::root_opds_author_books(&pool, (fid, mid, lid), authors::Sort::Added).await {
         Ok(feed) => opds::format_feed(feed),
         Err(err) => format!("{err}"),
     }

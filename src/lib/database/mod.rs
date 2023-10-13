@@ -264,7 +264,7 @@ pub async fn author_nonserie_books(
     Ok(out)
 }
 
-pub async fn author_alphabet_books(
+pub async fn author_books(
     pool: &SqlitePool,
     ids: (u32, u32, u32),
 ) -> anyhow::Result<Vec<BookDesc>> {
@@ -344,6 +344,7 @@ pub async fn root_opds_author_added_books(
 
     Ok(out)
 }
+
 
 pub async fn root_opds_serie_books(pool: &SqlitePool, id: u32) -> anyhow::Result<Vec<BookSerie>> {
     let sql = r#"
