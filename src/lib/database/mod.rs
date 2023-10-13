@@ -31,13 +31,41 @@ pub struct BookDesc {
     pub date: String,
 }
 
-pub async fn make_patterns(pool: &SqlitePool, pattern: &String) -> anyhow::Result<Vec<String>> {
+pub struct BookSerie {
+    pub id: u32,
+    pub num: u32,
+    pub name: String,
+    pub size: u32,
+    pub date: String,
+    pub author: String,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub enum QueryType {
+    Author,
+    Serie,
+}
+
+pub async fn make_patterns(
+    pool: &SqlitePool,
+    query: QueryType,
+    pattern: &String,
+) -> anyhow::Result<Vec<String>> {
     let len = (pattern.chars().count() + 1) as u32;
-    let sql = r#"
+    let sql = match query {
+        QueryType::Author => {
+            r#"
             SELECT DISTINCT substr(value, 1, $1) AS name
-            FROM last_names
-            WHERE value LIKE $2 || '%'
-        "#;
+            FROM last_names WHERE value LIKE $2 || '%'
+            "#
+        }
+        QueryType::Serie => {
+            r#"
+            SELECT DISTINCT substr(value, 1, $1) AS name
+            FROM series WHERE value LIKE $2 || '%'
+            "#
+        }
+    };
 
     let rows = sqlx::query(&sql)
         .bind(len)
@@ -81,6 +109,16 @@ pub async fn find_authors(pool: &SqlitePool, name: &String) -> anyhow::Result<Ve
         });
     }
 
+    Ok(out)
+}
+
+pub async fn find_series(pool: &SqlitePool, name: &String) -> anyhow::Result<Vec<Value>> {
+    let sql = "SELECT DISTINCT id, value FROM series WHERE value = $1";
+    let rows = sqlx::query(&sql).bind(name).fetch_all(&*pool).await?;
+    let mut out = Vec::new();
+    for row in rows {
+        out.push(Value::new(row.try_get("id")?, row.try_get("value")?));
+    }
     Ok(out)
 }
 
@@ -157,7 +195,7 @@ pub async fn author_serie_books(
         LEFT JOIN books ON authors_map.book_id = books.book_id
         LEFT JOIN titles ON books.title_id = titles.id
         LEFT JOIN series_map ON  books.book_id = series_map.book_id
-        -- LEFT JOIN series ON series_map.serie_id = series.id
+        LEFT JOIN series ON series_map.serie_id = series.id
         LEFT JOIN dates ON  books.date_id = dates.id
         WHERE
             first_name_id = $1 AND middle_name_id = $2 AND last_name_id = $3 AND series.id = $4
@@ -285,7 +323,7 @@ pub async fn root_opds_author_added_books(
         LEFT JOIN dates ON  books.date_id = dates.id
         WHERE
             first_name_id = $1 AND middle_name_id = $2 AND last_name_id = $3
-        ORDER BY added;
+        ORDER BY added DESC;
     "#;
     let rows = sqlx::query(&sql)
         .bind(fid)
@@ -301,6 +339,46 @@ pub async fn root_opds_author_added_books(
             name: row.try_get("name")?,
             size: row.try_get("size")?,
             date: row.try_get("added")?,
+        });
+    }
+
+    Ok(out)
+}
+
+pub async fn root_opds_serie_books(pool: &SqlitePool, id: u32) -> anyhow::Result<Vec<BookSerie>> {
+    let sql = r#"
+    SELECT
+        books.book_id AS id,
+        series_map.serie_num AS num,
+        titles.value AS name,
+        books.book_size AS size,
+        dates.value AS added,
+        first_names.value || ' ' || middle_names.value || ' ' || last_names.value AS author
+    FROM authors_map
+    LEFT JOIN books ON authors_map.book_id = books.book_id
+    LEFT JOIN titles ON books.title_id = titles.id
+    LEFT JOIN series_map ON  books.book_id = series_map.book_id
+    LEFT JOIN series ON series_map.serie_id = series.id
+    LEFT JOIN dates ON  books.date_id = dates.id
+    LEFT JOIN first_names ON first_names.id = first_name_id
+    LEFT JOIN middle_names ON middle_names.id = middle_name_id
+    LEFT JOIN last_names ON last_names.id = last_name_id
+    WHERE series.id = $1
+    ORDER BY 2, 3, 5, 6;
+    "#;
+    let rows = sqlx::query(&sql)
+        .bind(id)
+        .fetch_all(&*pool)
+        .await?;
+    let mut out = Vec::new();
+    for row in rows {
+        out.push(BookSerie {
+            id: row.try_get("id")?,
+            num: row.try_get("num")?,
+            name: row.try_get("name")?,
+            size: row.try_get("size")?,
+            date: row.try_get("added")?,
+            author: row.try_get("author")?,
         });
     }
 
