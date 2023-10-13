@@ -1244,6 +1244,7 @@ dependencies = [
  "anyhow",
  "chrono",
  "env_logger",
+ "itertools",
  "lazy_static",
  "log",
  "quick-xml",
