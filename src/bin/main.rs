@@ -4,9 +4,8 @@ use sqlx::sqlite::SqlitePool;
 
 use std::sync::Mutex;
 
-use lib::database;
 use lib::opds;
-use lib::utils;
+use lib::impls;
 
 const DEFAULT_ADDRESS: &'static str = "localhost";
 const DEFAULT_PORT: u16 = 8080;
@@ -42,21 +41,10 @@ async fn root_opds_authors(ctx: web::Data<AppState>) -> impl Responder {
     info!("/opds/authors");
 
     let pool = ctx.pool.lock().unwrap();
-    let mut feed = opds::Feed::new("Поиск книг по авторам");
-    match database::make_patterns(&pool, &String::from("")).await {
-        Ok(patterns) => {
-            for pattern in utils::sorted(patterns) {
-                if !pattern.is_empty() {
-                    feed.add(
-                        format!("{pattern}..."),
-                        format!("/opds/authors/mask/{pattern}"),
-                    );
-                }
-            }
-        }
-        Err(err) => return format!("{err}"),
+    match impls::root_opds_authors(&pool).await {
+        Ok(feed) => opds::format_feed(feed),
+        Err(err) => format!("{err}"),
     }
-    opds::format_feed(feed)
 }
 
 #[get("/opds/authors/mask/{pattern}")]
@@ -68,57 +56,12 @@ async fn root_opds_authors_mask(
     info!("/opds/authors/mask/{pattern}");
 
     let pool = ctx.pool.lock().unwrap();
-    match root_opds_authors_mask_impl(&pool, pattern).await {
+    match impls::root_opds_authors_mask(&pool, pattern).await {
         Ok(feed) => opds::format_feed(feed),
         Err(err) => format!("{err}"),
     }
 }
 
-async fn root_opds_authors_mask_impl(
-    pool: &SqlitePool,
-    mut pattern: String,
-) -> anyhow::Result<opds::Feed> {
-    let mut feed = opds::Feed::new("Поиск книг по авторам");
-
-    loop {
-        // Prepare authors list with exact surename (lastname)
-        let mut authors = database::find_authors(&pool, &pattern).await?;
-        authors.sort_by(|a, b| utils::fb2sort(&a.first_name, &b.first_name));
-        for author in authors {
-            let title = format!(
-                "{} {} {}",
-                author.last_name, author.first_name, author.middle_name,
-            );
-            let link = format!(
-                "/opds/author/id/{}/{}/{}",
-                author.first_id, author.middle_id, author.last_id
-            );
-            feed.add(title, link);
-        }
-
-        let patterns = database::make_patterns(&pool, &pattern).await?;
-        let mut tail = patterns
-            .into_iter()
-            .filter(|name| *name != pattern)
-            .collect::<Vec<String>>();
-
-        if tail.is_empty() {
-            break;
-        } else if 1 == tail.len() {
-            std::mem::swap(&mut pattern, &mut tail[0]);
-        } else {
-            for prefix in utils::sorted(tail) {
-                feed.add(
-                    format!("{prefix}..."),
-                    format!("/opds/authors/mask/{prefix}"),
-                );
-            }
-            break;
-        }
-    }
-
-    Ok(feed)
-}
 
 #[get("/opds/author/id/{fid}/{mid}/{lid}")]
 async fn root_opds_author_id(path: web::Path<(u32, u32, u32)>) -> impl Responder {
@@ -155,33 +98,27 @@ async fn root_opds_author_series(
     info!("/opds/author/series/{fid}/{mid}/{lid}");
 
     let pool = ctx.pool.lock().unwrap();
-    match root_opds_author_series_impl(&pool, (fid, mid, lid)).await {
+    match impls::root_opds_author_series(&pool, (fid, mid, lid)).await {
         Ok(feed) => opds::format_feed(feed),
         Err(err) => format!("{err}"),
     }
 }
 
-async fn root_opds_author_series_impl(
-    pool: &SqlitePool,
-    ids: (u32, u32, u32),
-) -> anyhow::Result<opds::Feed> {
-    let (fid, mid, lid) = ids;
-    let author = database::author(&pool, (fid, mid, lid)).await?;
-    let mut feed = opds::Feed::new(author);
-    let mut series = database::author_series(&pool, (fid, mid, lid)).await?;
-    series.sort_by(|a, b| utils::fb2sort(&a.name, &b.name));
+#[get("/opds/author/serie/books/{fid}/{mid}/{lid}/{sid}")]
+async fn root_opds_author_serie_books(
+    ctx: web::Data<AppState>,
+    path: web::Path<(u32, u32, u32, u32)>,
+) -> impl Responder {
+    let (fid, mid, lid, sid) = path.into_inner();
+    info!("/opds/author/serie/books/{fid}/{mid}/{lid}/{sid}");
 
-    for serie in series {
-        let sid = serie.id;
-        let name = serie.name;
-        let count = serie.count;
-        feed.add(
-            format!("{name} [{count} книг]"),
-            format!("/opds/author/serie/{fid}/{mid}/{lid}/{sid}"),
-        );
+    let pool = ctx.pool.lock().unwrap();
+    match impls::root_opds_author_serie_books(&pool, (fid, mid, lid, sid)).await {
+        Ok(feed) => opds::format_feed(feed),
+        Err(err) => format!("{err}"),
     }
-    return Ok(feed);
 }
+
 
 #[actix_web::main] // or #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -202,6 +139,7 @@ async fn main() -> anyhow::Result<()> {
             .service(root_opds_authors_mask)
             .service(root_opds_author_id)
             .service(root_opds_author_series)
+            .service(root_opds_author_serie_books)
     })
     .bind((addr.as_str(), port))?
     .run()
