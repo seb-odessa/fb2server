@@ -4,6 +4,8 @@ use actix_web::{get, web, App, HttpServer, Responder};
 use log::{info, warn};
 use sqlx::sqlite::SqlitePool;
 
+use std::env::VarError;
+use std::fmt::Display;
 use std::path::PathBuf;
 use std::sync::Mutex;
 
@@ -174,12 +176,10 @@ async fn main() -> anyhow::Result<()> {
     env_logger::init();
 
     let (addr, port, database, library) = read_params();
-    info!("Try http://{addr}:{port}/opds");
-
     let pool = SqlitePool::connect(&database).await?;
-
     let ctx = web::Data::new(AppState::new(pool, library));
 
+    info!("OPDS Server will ready at http://{addr}:{port}/opds");
     HttpServer::new(move || {
         App::new()
             .app_data(ctx.clone())
@@ -202,38 +202,33 @@ async fn main() -> anyhow::Result<()> {
 
 /*********************************************************************************/
 
+fn get_env<T: Into<String> + Display>(name: T, default: T) -> String {
+    let name = name.into();
+    let default = default.into();
+
+    std::env::var(&name)
+        .or_else(|err| {
+            warn!("{name}: {err} will use '{default}'");
+            Ok::<String, VarError>(default)
+        })
+        .expect(&format!("Can't configure {}", name))
+}
+
 fn read_params() -> (String, u16, String, PathBuf) {
-    let addr = match std::env::var("FB2S_ADDRESS") {
-        Ok(addr) => addr,
-        Err(e) => {
-            warn!("FB2S_ADDRESS: {e} will use {DEFAULT_ADDRESS}");
-            String::from(DEFAULT_ADDRESS)
-        }
-    };
+    let addr = get_env("FB2S_ADDRESS", DEFAULT_ADDRESS);
+    info!("FB2S_ADDRESS: {addr}");
 
-    let port = match std::env::var("FB2S_PORT") {
-        Ok(string) => string.as_str().parse::<u16>().unwrap_or(DEFAULT_PORT),
-        Err(e) => {
-            warn!("FB2S_PORT: {e} will use {DEFAULT_PORT}");
-            DEFAULT_PORT
-        }
-    };
+    let port = get_env("FB2S_PORT", &format!("{DEFAULT_PORT}"))
+        .as_str()
+        .parse::<u16>()
+        .unwrap_or(DEFAULT_PORT);
+    info!("FB2S_PORT: {port}");
 
-    let database = match std::env::var("FB2S_DATABASE") {
-        Ok(addr) => addr,
-        Err(e) => {
-            warn!("FB2S_DATABASE: {e} will use {DEFAULT_DATABASE}");
-            String::from(DEFAULT_DATABASE)
-        }
-    };
+    let database = get_env("FB2S_DATABASE", DEFAULT_DATABASE);
+    info!("FB2S_DATABASE: {database}");
 
-    let library = match std::env::var("FB2S_LIBRARY") {
-        Ok(addr) => PathBuf::from(addr),
-        Err(e) => {
-            warn!("FB2S_LIBRARY: {e} will use {DEFAULT_LIBRARY}");
-            PathBuf::from(DEFAULT_LIBRARY)
-        }
-    };
+    let library = PathBuf::from(get_env("FB2S_LIBRARY", DEFAULT_LIBRARY));
+    info!("FB2S_LIBRARY: {}", library.display());
 
     return (addr, port, database, library);
 }
