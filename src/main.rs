@@ -1,79 +1,61 @@
-use actix_web::{get, web, App, HttpServer, Responder};
+use actix_web::{get, App, HttpServer, Responder};
 use chrono;
 use log::{info, warn};
 use quick_xml::events::{BytesText, Event};
 use quick_xml::writer::Writer;
+
+use std::convert::Into;
 use std::io::Cursor;
 
 const DEFAULT_ADDRESS: &'static str = "localhost";
 const DEFAULT_PORT: u16 = 8080;
 const XML_HEAD: &'static str = r#"xml version="1.0" encoding="utf-8""#;
 
-#[get("/hello/{name}")]
-async fn greet(name: web::Path<String>) -> impl Responder {
-    info!("Name: {name}");
-    format!("Hello {name}!")
+struct Entry {
+    id: String,
+    title: String,
+    link: String,
+}
+impl Entry {
+    pub fn new<T: Into<String>>(title: T, link: T) -> Self {
+        let link = link.into();
+        let id = String::from("root") + &link.clone().as_str().replace("/", ":");
+        Self {
+            id: id.into(),
+            title: title.into(),
+            link: link.into(),
+        }
+    }
 }
 
-fn make_root_xml() -> anyhow::Result<Vec<u8>> {
-    let mut writer = Writer::new(Cursor::new(Vec::new()));
-    // <?xml version="1.0" encoding="utf-8"?>
-    writer
-        .write_event(Event::PI(BytesText::from_escaped(XML_HEAD)))
-        .unwrap();
+struct Feed {
+    pub title: String,
+    pub entries: Vec<Entry>,
+}
+impl Feed {
+    pub fn new<T: Into<String>>(title: T) -> Self {
+        Self {
+            title: title.into(),
+            entries: Vec::new(),
+        }
+    }
 
-    writer
-        .create_element("feed")
-        .with_attribute(("xmlns", "http://www.w3.org/2005/Atom"))
-        .with_attribute(("xmlns:dc", "http://purl.org/dc/terms/"))
-        .with_attribute(("xmlns:os", "http://a9.com/-/spec/opensearch/1.1/"))
-        .with_attribute(("xmlns:opds", "http://opds-spec.org/2010/catalog"))
-        .write_inner_content(|w| {
-            w.create_element("title")
-                .write_text_content(BytesText::new("Catalog fb2"))?;
-
-            let updated = format!("{:?}", chrono::Utc::now());
-            w.create_element("updated")
-                .write_text_content(BytesText::new(&updated))?;
-
-            w.create_element("link")
-                .with_attribute(("href", "/opds"))
-                .with_attribute(("rel", "/start"))
-                .with_attribute(("type", "application/atom+xml;profile=opds-catalog"))
-                .write_empty()?;
-
-            w.create_element("link")
-                .with_attribute(("href", "/opds"))
-                .with_attribute(("self", "/start"))
-                .with_attribute(("type", "application/atom+xml;profile=opds-catalog"))
-                .write_empty()?;
-
-            w.create_element("entry").write_inner_content(|w| {
-                w.create_element("id")
-                    .write_text_content(BytesText::new("tag:root:authors"))?;
-
-                w.create_element("title")
-                    .write_text_content(BytesText::new("По авторам"))?;
-
-                w.create_element("link")
-                    .with_attribute(("href", "/opds/authors"))
-                    .with_attribute(("type", "application/atom+xml;profile=opds-catalog"))
-                    .write_empty()?;
-
-                Ok(())
-            })?;
-
-            Ok(())
-        })?;
-
-    return Ok(writer.into_inner().into_inner());
+    pub fn add<T: Into<String>>(&mut self, title: T, link: T) {
+        let entry = Entry::new(title, link);
+        self.entries.push(entry);
+    }
 }
 
 #[get("/opds")]
-async fn root() -> impl Responder {
+async fn opds() -> impl Responder {
     info!("opds");
-    match make_root_xml() {
-        Ok(vec) => String::from_utf8_lossy(&vec).into_owned(),
+    let mut feed = Feed::new("Catalog Root");
+    feed.add("Поиск книг по авторам", "/opds/authors");
+    feed.add("Поиск книг по сериям", "/opds/series");
+    feed.add("Поиск книг по жанрам", "/opds/genres");
+
+    match make_feed(feed) {
+        Ok(xml) => xml,
         Err(err) => format!("{err}"),
     }
 }
@@ -86,12 +68,14 @@ async fn main() -> anyhow::Result<()> {
 
     info!("Try http://{addr}:{port}/opds");
 
-    HttpServer::new(|| App::new().service(greet).service(root))
+    HttpServer::new(|| App::new().service(opds))
         .bind((addr.as_str(), port))?
         .run()
         .await
         .map_err(anyhow::Error::from)
 }
+
+/*********************************************************************************/
 
 fn read_params() -> (String, u16) {
     let addr = match std::env::var("FB2SERVER") {
@@ -111,4 +95,50 @@ fn read_params() -> (String, u16) {
     };
 
     return (addr, port);
+}
+
+fn make_feed(feed: Feed) -> anyhow::Result<String> {
+    let mut w = Writer::new(Cursor::new(Vec::new()));
+
+    w.write_event(Event::PI(BytesText::from_escaped(XML_HEAD)))?;
+    w.create_element("feed")
+        .with_attribute(("xmlns", "http://www.w3.org/2005/Atom"))
+        .with_attribute(("xmlns:dc", "http://purl.org/dc/terms/"))
+        .with_attribute(("xmlns:os", "http://a9.com/-/spec/opensearch/1.1/"))
+        .with_attribute(("xmlns:opds", "http://opds-spec.org/2010/catalog"))
+        .write_inner_content(|w| {
+            w.create_element("title")
+                .write_text_content(BytesText::new(&feed.title))?;
+
+            let updated = format!("{:?}", chrono::Utc::now());
+            w.create_element("updated")
+                .write_text_content(BytesText::new(&updated))?;
+
+            w.create_element("link")
+                .with_attribute(("href", "/opds"))
+                .with_attribute(("rel", "/start"))
+                .with_attribute(("type", "application/atom+xml;profile=opds-catalog"))
+                .write_empty()?;
+
+            for entry in &feed.entries {
+                w.create_element("entry").write_inner_content(|w| {
+                    w.create_element("id")
+                        .write_text_content(BytesText::new(&entry.id))?;
+
+                    w.create_element("title")
+                        .write_text_content(BytesText::new(&entry.title))?;
+
+                    w.create_element("link")
+                        .with_attribute(("href", entry.link.as_str()))
+                        .with_attribute(("type", "application/atom+xml;profile=opds-catalog"))
+                        .write_empty()?;
+
+                    Ok(())
+                })?;
+            }
+
+            Ok(())
+        })?;
+
+    Ok(String::from_utf8_lossy(&w.into_inner().into_inner()).into_owned())
 }
