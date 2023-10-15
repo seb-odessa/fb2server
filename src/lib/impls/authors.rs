@@ -12,7 +12,11 @@ pub enum Sort {
     Added,
 }
 
-pub async fn add_authors(catalog: &SqlitePool, name: &String, feed: &mut Feed) -> anyhow::Result<()> {
+pub async fn add_authors(
+    catalog: &SqlitePool,
+    name: &String,
+    feed: &mut Feed,
+) -> anyhow::Result<()> {
     let mut authors = database::find_authors(&catalog, &name).await?;
     authors.sort_by(|a, b| utils::fb2sort(&a.first_name.value, &b.first_name.value));
 

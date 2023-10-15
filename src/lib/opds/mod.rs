@@ -1,8 +1,8 @@
+use actix_web::Responder;
 use chrono;
+use log::error;
 use quick_xml::events::{BytesText, Event};
 use quick_xml::writer::Writer;
-use actix_web::Responder;
-use log::error;
 
 use std::io::Cursor;
 

@@ -142,7 +142,10 @@ pub async fn author(catalog: &SqlitePool, ids: (u32, u32, u32)) -> anyhow::Resul
     Ok(row.try_get("author")?)
 }
 
-pub async fn author_series(catalog: &SqlitePool, ids: (u32, u32, u32)) -> anyhow::Result<Vec<Serie>> {
+pub async fn author_series(
+    catalog: &SqlitePool,
+    ids: (u32, u32, u32),
+) -> anyhow::Result<Vec<Serie>> {
     let (fid, mid, lid) = ids;
     let sql = r#"
         SELECT
@@ -345,7 +348,10 @@ pub async fn root_opds_author_added_books(
     Ok(out)
 }
 
-pub async fn root_opds_serie_books(catalog: &SqlitePool, id: u32) -> anyhow::Result<Vec<BookSerie>> {
+pub async fn root_opds_serie_books(
+    catalog: &SqlitePool,
+    id: u32,
+) -> anyhow::Result<Vec<BookSerie>> {
     let sql = r#"
     SELECT
         books.book_id AS id,
@@ -506,13 +512,17 @@ pub async fn get_favorites(catalog: &SqlitePool) -> anyhow::Result<Vec<u32>> {
     Ok(out)
 }
 
-pub async fn root_opds_favorite_authors(catalog: &SqlitePool, ids: Vec<u32>) -> anyhow::Result<Vec<Author>> {
+pub async fn root_opds_favorite_authors(
+    catalog: &SqlitePool,
+    ids: Vec<u32>,
+) -> anyhow::Result<Vec<Author>> {
     if ids.is_empty() {
-        return Ok(vec![])
+        return Ok(vec![]);
     }
 
-    let params = format!("?{}", ", ?".repeat(ids.len()-1));
-    let sql = format!("
+    let params = format!("?{}", ", ?".repeat(ids.len() - 1));
+    let sql = format!(
+        "
         SELECT DISTINCT
             first_names.id AS first_id,
             middle_names.id AS middle_id,
@@ -526,12 +536,12 @@ pub async fn root_opds_favorite_authors(catalog: &SqlitePool, ids: Vec<u32>) -> 
         LEFT JOIN last_names ON last_names.id = authors_map.last_name_id
         WHERE book_id IN ({params})
         ORDER BY 6,4,5
-    ");
+    "
+    );
     let mut query = sqlx::query(&sql);
     for id in &ids {
         query = query.bind(id);
     }
-
 
     let rows = query.fetch_all(&*catalog).await?;
     let mut out = Vec::new();

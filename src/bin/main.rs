@@ -112,8 +112,8 @@ async fn root_opds_authors(ctx: web::Data<AppState>) -> impl Responder {
 
     let title = String::from("Поиск книг по авторам");
     let root = String::from("/opds/authors/mask");
-    let pool = ctx.catalog.lock().unwrap();
-    let feed = impls::root_opds_by_mask(&pool, QueryType::Author, title, root).await;
+    let catalog = ctx.catalog.lock().unwrap();
+    let feed = impls::root_opds_by_mask(&catalog, QueryType::Author, title, root).await;
     opds::handle_feed(feed)
 }
 
@@ -123,8 +123,8 @@ async fn root_opds_series(ctx: web::Data<AppState>) -> impl Responder {
 
     let title = String::from("Поиск книг сериям");
     let root = String::from("/opds/series/mask");
-    let pool = ctx.catalog.lock().unwrap();
-    let feed = impls::root_opds_by_mask(&pool, QueryType::Serie, title, root).await;
+    let catalog = ctx.catalog.lock().unwrap();
+    let feed = impls::root_opds_by_mask(&catalog, QueryType::Serie, title, root).await;
     opds::handle_feed(feed)
 }
 
@@ -134,8 +134,8 @@ async fn root_opds_meta(ctx: web::Data<AppState>) -> impl Responder {
 
     let title = String::from("Поиск книг жанрам");
     let root = String::from("/opds/genres");
-    let pool = ctx.catalog.lock().unwrap();
-    let feed = impls::root_opds_meta(&pool, &title, &root).await;
+    let catalog = ctx.catalog.lock().unwrap();
+    let feed = impls::root_opds_meta(&catalog, &title, &root).await;
     opds::handle_feed(feed)
 }
 
@@ -149,8 +149,8 @@ async fn root_opds_genres_meta(
 
     let title = String::from("Поиск книг жанрам");
     let root = String::from("/opds/genre");
-    let pool = ctx.catalog.lock().unwrap();
-    let feed = impls::root_opds_genres_meta(&pool, &title, &root, &meta).await;
+    let catalog = ctx.catalog.lock().unwrap();
+    let feed = impls::root_opds_genres_meta(&catalog, &title, &root, &meta).await;
     opds::handle_feed(feed)
 }
 
@@ -173,8 +173,8 @@ async fn root_opds_genres_series(
     let genre = path.into_inner();
     info!("/opds/genre/series/{genre}");
 
-    let pool = ctx.catalog.lock().unwrap();
-    let feed = impls::root_opds_genres_series(&pool, &genre).await;
+    let catalog = ctx.catalog.lock().unwrap();
+    let feed = impls::root_opds_genres_series(&catalog, &genre).await;
     opds::handle_feed(feed)
 }
 
@@ -186,8 +186,8 @@ async fn root_opds_genres_authors(
     let genre = path.into_inner();
     info!("/opds/genre/authors/{genre}");
 
-    let pool = ctx.catalog.lock().unwrap();
-    let feed = impls::root_opds_genres_authors(&pool, &genre).await;
+    let catalog = ctx.catalog.lock().unwrap();
+    let feed = impls::root_opds_genres_authors(&catalog, &genre).await;
     opds::handle_feed(feed)
 }
 
@@ -211,9 +211,9 @@ async fn root_opds_authors_mask(
 
     let title = String::from("Поиск книг по авторам");
     let root = String::from("/opds/authors/mask");
-    let pool = ctx.catalog.lock().unwrap();
+    let catalog = ctx.catalog.lock().unwrap();
     let feed =
-        impls::root_opds_search_by_mask(&pool, QueryType::Author, title, root, pattern).await;
+        impls::root_opds_search_by_mask(&catalog, QueryType::Author, title, root, pattern).await;
     opds::handle_feed(feed)
 }
 
@@ -227,8 +227,9 @@ async fn root_opds_series_mask(
 
     let title = String::from("Поиск книг сериям");
     let root = String::from("/opds/series/mask");
-    let pool = ctx.catalog.lock().unwrap();
-    let feed = impls::root_opds_search_by_mask(&pool, QueryType::Serie, title, root, pattern).await;
+    let catalog = ctx.catalog.lock().unwrap();
+    let feed =
+        impls::root_opds_search_by_mask(&catalog, QueryType::Serie, title, root, pattern).await;
     opds::handle_feed(feed)
 }
 
@@ -287,8 +288,8 @@ async fn root_opds_serie_books(
     let (id, sort) = path.into_inner();
     info!("/opds/serie/{id}/{sort}");
 
-    let pool = ctx.catalog.lock().unwrap();
-    let feed = impls::root_opds_serie_books(&pool, id, sort).await;
+    let catalog = ctx.catalog.lock().unwrap();
+    let feed = impls::root_opds_serie_books(&catalog, id, sort).await;
     opds::handle_feed(feed)
 }
 
@@ -300,8 +301,8 @@ async fn root_opds_author_series(
     let (fid, mid, lid) = path.into_inner();
     info!("/opds/author/series/{fid}/{mid}/{lid}");
 
-    let pool = ctx.catalog.lock().unwrap();
-    let feed = impls::root_opds_author_series(&pool, (fid, mid, lid)).await;
+    let catalog = ctx.catalog.lock().unwrap();
+    let feed = impls::root_opds_author_series(&catalog, (fid, mid, lid)).await;
     opds::handle_feed(feed)
 }
 
@@ -314,8 +315,8 @@ async fn root_opds_author_serie_books(
     info!("/opds/author/serie/books/{fid}/{mid}/{lid}/{sid}");
 
     let sort = authors::Sort::BySerie(sid);
-    let pool = ctx.catalog.lock().unwrap();
-    let feed = impls::root_opds_author_books(&pool, (fid, mid, lid), sort).await;
+    let catalog = ctx.catalog.lock().unwrap();
+    let feed = impls::root_opds_author_books(&catalog, (fid, mid, lid), sort).await;
     opds::handle_feed(feed)
 }
 
@@ -327,8 +328,9 @@ async fn root_opds_author_nonserie_books(
     let (fid, mid, lid) = path.into_inner();
     info!("/opds/author/nonserie/books/{fid}/{mid}/{lid}");
 
-    let pool = ctx.catalog.lock().unwrap();
-    let feed = impls::root_opds_author_books(&pool, (fid, mid, lid), authors::Sort::NoSerie).await;
+    let catalog = ctx.catalog.lock().unwrap();
+    let feed =
+        impls::root_opds_author_books(&catalog, (fid, mid, lid), authors::Sort::NoSerie).await;
     opds::handle_feed(feed)
 }
 
@@ -340,8 +342,9 @@ async fn root_opds_author_alphabet_books(
     let (fid, mid, lid) = path.into_inner();
     info!("/opds/author/alphabet/books/{fid}/{mid}/{lid}");
 
-    let pool = ctx.catalog.lock().unwrap();
-    let feed = impls::root_opds_author_books(&pool, (fid, mid, lid), authors::Sort::Alphabet).await;
+    let catalog = ctx.catalog.lock().unwrap();
+    let feed =
+        impls::root_opds_author_books(&catalog, (fid, mid, lid), authors::Sort::Alphabet).await;
     opds::handle_feed(feed)
 }
 
@@ -353,8 +356,8 @@ async fn root_opds_author_added_books(
     let (fid, mid, lid) = path.into_inner();
     info!("/opds/author/added/books/{fid}/{mid}/{lid}");
 
-    let pool = ctx.catalog.lock().unwrap();
-    let feed = impls::root_opds_author_books(&pool, (fid, mid, lid), authors::Sort::Added).await;
+    let catalog = ctx.catalog.lock().unwrap();
+    let feed = impls::root_opds_author_books(&catalog, (fid, mid, lid), authors::Sort::Added).await;
     opds::handle_feed(feed)
 }
 
@@ -368,9 +371,9 @@ async fn root_opds_book(
 
     match impls::extract_book(ctx.path.clone(), id) {
         Ok(book) => {
-            let pool = ctx.statistic.lock().unwrap();
+            let catalog = ctx.statistic.lock().unwrap();
 
-            if let Err(err) = database::insert_book(&pool, id).await {
+            if let Err(err) = database::insert_book(&catalog, id).await {
                 let msg = format!("{err}");
                 error!("{}", msg);
                 return Err(io::Error::new(io::ErrorKind::Other, msg));

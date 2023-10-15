@@ -46,7 +46,10 @@ pub async fn root_opds_genres_series(catalog: &SqlitePool, genre: &String) -> an
     return Ok(feed);
 }
 
-pub async fn root_opds_genres_authors(catalog: &SqlitePool, genre: &String) -> anyhow::Result<Feed> {
+pub async fn root_opds_genres_authors(
+    catalog: &SqlitePool,
+    genre: &String,
+) -> anyhow::Result<Feed> {
     let mut feed = Feed::new(genre);
     let mut authors = database::root_opds_genres_authors(&catalog, genre).await?;
     authors.sort_by(|a, b| utils::fb2sort(&a.first_name.value, &b.first_name.value));

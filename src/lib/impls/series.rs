@@ -4,7 +4,11 @@ use crate::utils;
 
 use sqlx::sqlite::SqlitePool;
 
-pub async fn add_series(catalog: &SqlitePool, name: &String, feed: &mut Feed) -> anyhow::Result<()> {
+pub async fn add_series(
+    catalog: &SqlitePool,
+    name: &String,
+    feed: &mut Feed,
+) -> anyhow::Result<()> {
     let mut values = database::find_series(&catalog, &name).await?;
     values.sort_by(|a, b| utils::fb2sort(&a.value, &b.value));
 
