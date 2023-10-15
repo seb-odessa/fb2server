@@ -5,33 +5,33 @@ use crate::opds::Feed;
 use crate::utils;
 
 pub async fn root_opds_meta(
-    pool: &SqlitePool,
+    catalog: &SqlitePool,
     title: &String,
     root: &String,
 ) -> anyhow::Result<Feed> {
     let mut feed = Feed::new(title);
-    for genre in database::genres_meta(&pool).await? {
+    for genre in database::genres_meta(&catalog).await? {
         feed.add(format!("{genre}"), format!("{root}/{genre}"));
     }
     return Ok(feed);
 }
 
 pub async fn root_opds_genres_meta(
-    pool: &SqlitePool,
+    catalog: &SqlitePool,
     title: &String,
     root: &String,
     meta: &String,
 ) -> anyhow::Result<Feed> {
     let mut feed = Feed::new(title);
-    for genre in database::genres_by_meta(&pool, &meta).await? {
+    for genre in database::genres_by_meta(&catalog, &meta).await? {
         feed.add(format!("{genre}"), format!("{root}/{genre}"));
     }
     return Ok(feed);
 }
 
-pub async fn root_opds_genres_series(pool: &SqlitePool, genre: &String) -> anyhow::Result<Feed> {
+pub async fn root_opds_genres_series(catalog: &SqlitePool, genre: &String) -> anyhow::Result<Feed> {
     let mut feed = Feed::new(genre);
-    let mut series = database::root_opds_genres_series(&pool, genre).await?;
+    let mut series = database::root_opds_genres_series(&catalog, genre).await?;
     series.sort_by(|a, b| utils::fb2sort(&a.name, &b.name));
 
     for serie in series {
@@ -46,9 +46,9 @@ pub async fn root_opds_genres_series(pool: &SqlitePool, genre: &String) -> anyho
     return Ok(feed);
 }
 
-pub async fn root_opds_genres_authors(pool: &SqlitePool, genre: &String) -> anyhow::Result<Feed> {
+pub async fn root_opds_genres_authors(catalog: &SqlitePool, genre: &String) -> anyhow::Result<Feed> {
     let mut feed = Feed::new(genre);
-    let mut authors = database::root_opds_genres_authors(&pool, genre).await?;
+    let mut authors = database::root_opds_genres_authors(&catalog, genre).await?;
     authors.sort_by(|a, b| utils::fb2sort(&a.first_name.value, &b.first_name.value));
 
     for author in authors {

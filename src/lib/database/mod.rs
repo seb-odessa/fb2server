@@ -47,7 +47,7 @@ pub enum QueryType {
 }
 
 pub async fn make_patterns(
-    pool: &SqlitePool,
+    catalog: &SqlitePool,
     query: QueryType,
     pattern: &String,
 ) -> anyhow::Result<Vec<String>> {
@@ -70,7 +70,7 @@ pub async fn make_patterns(
     let rows = sqlx::query(&sql)
         .bind(len)
         .bind(format!("{pattern}"))
-        .fetch_all(&*pool)
+        .fetch_all(&*catalog)
         .await?;
 
     let mut out = Vec::new();
@@ -82,7 +82,7 @@ pub async fn make_patterns(
     Ok(out)
 }
 
-pub async fn find_authors(pool: &SqlitePool, name: &String) -> anyhow::Result<Vec<Author>> {
+pub async fn find_authors(catalog: &SqlitePool, name: &String) -> anyhow::Result<Vec<Author>> {
     let sql = r#"
         SELECT DISTINCT
 	        first_names.id AS first_id,
@@ -99,7 +99,7 @@ pub async fn find_authors(pool: &SqlitePool, name: &String) -> anyhow::Result<Ve
 	    AND last_names.id = last_name_id;
     "#;
 
-    let rows = sqlx::query(&sql).bind(name).fetch_all(&*pool).await?;
+    let rows = sqlx::query(&sql).bind(name).fetch_all(&*catalog).await?;
     let mut out = Vec::new();
     for row in rows {
         out.push(Author {
@@ -112,9 +112,9 @@ pub async fn find_authors(pool: &SqlitePool, name: &String) -> anyhow::Result<Ve
     Ok(out)
 }
 
-pub async fn find_series(pool: &SqlitePool, name: &String) -> anyhow::Result<Vec<Value>> {
+pub async fn find_series(catalog: &SqlitePool, name: &String) -> anyhow::Result<Vec<Value>> {
     let sql = "SELECT DISTINCT id, value FROM series WHERE value = $1";
-    let rows = sqlx::query(&sql).bind(name).fetch_all(&*pool).await?;
+    let rows = sqlx::query(&sql).bind(name).fetch_all(&*catalog).await?;
     let mut out = Vec::new();
     for row in rows {
         out.push(Value::new(row.try_get("id")?, row.try_get("value")?));
@@ -122,7 +122,7 @@ pub async fn find_series(pool: &SqlitePool, name: &String) -> anyhow::Result<Vec
     Ok(out)
 }
 
-pub async fn author(pool: &SqlitePool, ids: (u32, u32, u32)) -> anyhow::Result<String> {
+pub async fn author(catalog: &SqlitePool, ids: (u32, u32, u32)) -> anyhow::Result<String> {
     let (fid, mid, lid) = ids;
     let sql = r#"
         SELECT
@@ -137,12 +137,12 @@ pub async fn author(pool: &SqlitePool, ids: (u32, u32, u32)) -> anyhow::Result<S
         .bind(fid)
         .bind(mid)
         .bind(lid)
-        .fetch_one(&*pool)
+        .fetch_one(&*catalog)
         .await?;
     Ok(row.try_get("author")?)
 }
 
-pub async fn author_series(pool: &SqlitePool, ids: (u32, u32, u32)) -> anyhow::Result<Vec<Serie>> {
+pub async fn author_series(catalog: &SqlitePool, ids: (u32, u32, u32)) -> anyhow::Result<Vec<Serie>> {
     let (fid, mid, lid) = ids;
     let sql = r#"
         SELECT
@@ -165,7 +165,7 @@ pub async fn author_series(pool: &SqlitePool, ids: (u32, u32, u32)) -> anyhow::R
         .bind(fid)
         .bind(mid)
         .bind(lid)
-        .fetch_all(&*pool)
+        .fetch_all(&*catalog)
         .await?;
     let mut out = Vec::new();
     for row in rows {
@@ -180,7 +180,7 @@ pub async fn author_series(pool: &SqlitePool, ids: (u32, u32, u32)) -> anyhow::R
 }
 
 pub async fn author_serie_books(
-    pool: &SqlitePool,
+    catalog: &SqlitePool,
     ids: (u32, u32, u32, u32),
 ) -> anyhow::Result<Vec<BookDesc>> {
     let (fid, mid, lid, sid) = ids;
@@ -206,7 +206,7 @@ pub async fn author_serie_books(
         .bind(mid)
         .bind(lid)
         .bind(sid)
-        .fetch_all(&*pool)
+        .fetch_all(&*catalog)
         .await?;
     let mut out = Vec::new();
     for row in rows {
@@ -223,7 +223,7 @@ pub async fn author_serie_books(
 }
 
 pub async fn author_nonserie_books(
-    pool: &SqlitePool,
+    catalog: &SqlitePool,
     ids: (u32, u32, u32),
 ) -> anyhow::Result<Vec<BookDesc>> {
     let (fid, mid, lid) = ids;
@@ -248,7 +248,7 @@ pub async fn author_nonserie_books(
         .bind(fid)
         .bind(mid)
         .bind(lid)
-        .fetch_all(&*pool)
+        .fetch_all(&*catalog)
         .await?;
     let mut out = Vec::new();
     for row in rows {
@@ -265,7 +265,7 @@ pub async fn author_nonserie_books(
 }
 
 pub async fn author_books(
-    pool: &SqlitePool,
+    catalog: &SqlitePool,
     ids: (u32, u32, u32),
 ) -> anyhow::Result<Vec<BookDesc>> {
     let (fid, mid, lid) = ids;
@@ -288,7 +288,7 @@ pub async fn author_books(
         .bind(fid)
         .bind(mid)
         .bind(lid)
-        .fetch_all(&*pool)
+        .fetch_all(&*catalog)
         .await?;
     let mut out = Vec::new();
     for row in rows {
@@ -305,7 +305,7 @@ pub async fn author_books(
 }
 
 pub async fn root_opds_author_added_books(
-    pool: &SqlitePool,
+    catalog: &SqlitePool,
     ids: (u32, u32, u32),
 ) -> anyhow::Result<Vec<BookDesc>> {
     let (fid, mid, lid) = ids;
@@ -329,7 +329,7 @@ pub async fn root_opds_author_added_books(
         .bind(fid)
         .bind(mid)
         .bind(lid)
-        .fetch_all(&*pool)
+        .fetch_all(&*catalog)
         .await?;
     let mut out = Vec::new();
     for row in rows {
@@ -345,7 +345,7 @@ pub async fn root_opds_author_added_books(
     Ok(out)
 }
 
-pub async fn root_opds_serie_books(pool: &SqlitePool, id: u32) -> anyhow::Result<Vec<BookSerie>> {
+pub async fn root_opds_serie_books(catalog: &SqlitePool, id: u32) -> anyhow::Result<Vec<BookSerie>> {
     let sql = r#"
     SELECT
         books.book_id AS id,
@@ -366,7 +366,7 @@ pub async fn root_opds_serie_books(pool: &SqlitePool, id: u32) -> anyhow::Result
     WHERE series.id = $1
     ORDER BY 2, 3, 5, 6;
     "#;
-    let rows = sqlx::query(&sql).bind(id).fetch_all(&*pool).await?;
+    let rows = sqlx::query(&sql).bind(id).fetch_all(&*catalog).await?;
     let mut out = Vec::new();
     for row in rows {
         out.push(BookSerie {
@@ -382,9 +382,9 @@ pub async fn root_opds_serie_books(pool: &SqlitePool, id: u32) -> anyhow::Result
     Ok(out)
 }
 
-pub async fn genres_meta(pool: &SqlitePool) -> anyhow::Result<Vec<String>> {
+pub async fn genres_meta(catalog: &SqlitePool) -> anyhow::Result<Vec<String>> {
     let sql = "SELECT DISTINCT meta FROM genres_def ORDER BY 1;";
-    let rows = sqlx::query(&sql).fetch_all(&*pool).await?;
+    let rows = sqlx::query(&sql).fetch_all(&*catalog).await?;
     let mut out = Vec::new();
     for row in rows {
         out.push(row.try_get("meta")?);
@@ -392,9 +392,9 @@ pub async fn genres_meta(pool: &SqlitePool) -> anyhow::Result<Vec<String>> {
     Ok(out)
 }
 
-pub async fn genres_by_meta(pool: &SqlitePool, meta: &String) -> anyhow::Result<Vec<String>> {
+pub async fn genres_by_meta(catalog: &SqlitePool, meta: &String) -> anyhow::Result<Vec<String>> {
     let sql = "SELECT DISTINCT genre FROM genres_def WHERE meta = $1 ORDER BY 1;";
-    let rows = sqlx::query(&sql).bind(meta).fetch_all(&*pool).await?;
+    let rows = sqlx::query(&sql).bind(meta).fetch_all(&*catalog).await?;
     let mut out = Vec::new();
     for row in rows {
         out.push(row.try_get("genre")?);
@@ -403,7 +403,7 @@ pub async fn genres_by_meta(pool: &SqlitePool, meta: &String) -> anyhow::Result<
 }
 
 pub async fn root_opds_genres_series(
-    pool: &SqlitePool,
+    catalog: &SqlitePool,
     genre: &String,
 ) -> anyhow::Result<Vec<Serie>> {
     let sql = r#"
@@ -420,7 +420,7 @@ pub async fn root_opds_genres_series(
         GROUP BY 1, 2
     "#;
 
-    let rows = sqlx::query(&sql).bind(genre).fetch_all(&*pool).await?;
+    let rows = sqlx::query(&sql).bind(genre).fetch_all(&*catalog).await?;
     let mut out = Vec::new();
     for row in rows {
         out.push(Serie {
@@ -434,7 +434,7 @@ pub async fn root_opds_genres_series(
 }
 
 pub async fn root_opds_genres_authors(
-    pool: &SqlitePool,
+    catalog: &SqlitePool,
     genre: &String,
 ) -> anyhow::Result<Vec<Author>> {
     let sql = r#"
@@ -458,7 +458,7 @@ pub async fn root_opds_genres_authors(
         ORDER BY 6,4,5
     "#;
 
-    let rows = sqlx::query(&sql).bind(genre).fetch_all(&*pool).await?;
+    let rows = sqlx::query(&sql).bind(genre).fetch_all(&*catalog).await?;
     let mut out = Vec::new();
     for row in rows {
         out.push(Author {
@@ -471,34 +471,34 @@ pub async fn root_opds_genres_authors(
     Ok(out)
 }
 
-pub async fn init_statistic_db(pool: &SqlitePool) -> anyhow::Result<()> {
+pub async fn init_statistic_db(catalog: &SqlitePool) -> anyhow::Result<()> {
     let create_downloads_query = r"
     CREATE TABLE IF NOT EXISTS downloads(
         book_id     INTEGER NOT NULL,
         downloaded  DATETIME DEFAULT CURRENT_TIMESTAMP
     );";
 
-    sqlx::query(create_downloads_query).execute(pool).await?;
+    sqlx::query(create_downloads_query).execute(catalog).await?;
     Ok(())
 }
 
-pub async fn insert_book(pool: &SqlitePool, id: u32) -> anyhow::Result<()> {
+pub async fn insert_book(catalog: &SqlitePool, id: u32) -> anyhow::Result<()> {
     let insert_downloads_query = r"
     INSERT INTO downloads(book_id)
     VALUES (?);";
     sqlx::query(&insert_downloads_query)
         .bind(id)
-        .execute(pool)
+        .execute(catalog)
         .await?;
     Ok(())
 }
 
-pub async fn get_favorites(pool: &SqlitePool) -> anyhow::Result<Vec<u32>> {
+pub async fn get_favorites(catalog: &SqlitePool) -> anyhow::Result<Vec<u32>> {
     let sql = "
     SELECT DISTINCT book_id AS id FROM downloads
     WHERE downloaded > DATE('now', '-1 month')
     GROUP BY book_id;";
-    let rows = sqlx::query(&sql).fetch_all(&*pool).await?;
+    let rows = sqlx::query(&sql).fetch_all(&*catalog).await?;
     let mut out = Vec::new();
     for row in rows {
         out.push(row.try_get("id")?);
@@ -506,7 +506,7 @@ pub async fn get_favorites(pool: &SqlitePool) -> anyhow::Result<Vec<u32>> {
     Ok(out)
 }
 
-pub async fn root_opds_favorite_authors(pool: &SqlitePool, ids: Vec<u32>) -> anyhow::Result<Vec<Author>> {
+pub async fn root_opds_favorite_authors(catalog: &SqlitePool, ids: Vec<u32>) -> anyhow::Result<Vec<Author>> {
     if ids.is_empty() {
         return Ok(vec![])
     }
@@ -533,7 +533,7 @@ pub async fn root_opds_favorite_authors(pool: &SqlitePool, ids: Vec<u32>) -> any
     }
 
 
-    let rows = query.fetch_all(&*pool).await?;
+    let rows = query.fetch_all(&*catalog).await?;
     let mut out = Vec::new();
     for row in rows {
         out.push(Author {

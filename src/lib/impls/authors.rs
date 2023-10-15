@@ -12,8 +12,8 @@ pub enum Sort {
     Added,
 }
 
-pub async fn add_authors(pool: &SqlitePool, name: &String, feed: &mut Feed) -> anyhow::Result<()> {
-    let mut authors = database::find_authors(&pool, &name).await?;
+pub async fn add_authors(catalog: &SqlitePool, name: &String, feed: &mut Feed) -> anyhow::Result<()> {
+    let mut authors = database::find_authors(&catalog, &name).await?;
     authors.sort_by(|a, b| utils::fb2sort(&a.first_name.value, &b.first_name.value));
 
     for author in authors {
@@ -31,13 +31,13 @@ pub async fn add_authors(pool: &SqlitePool, name: &String, feed: &mut Feed) -> a
 }
 
 pub async fn root_opds_author_series(
-    pool: &SqlitePool,
+    catalog: &SqlitePool,
     ids: (u32, u32, u32),
 ) -> anyhow::Result<Feed> {
     let (fid, mid, lid) = ids;
-    let author = database::author(&pool, (fid, mid, lid)).await?;
+    let author = database::author(&catalog, (fid, mid, lid)).await?;
     let mut feed = Feed::new(&author);
-    let mut series = database::author_series(&pool, (fid, mid, lid)).await?;
+    let mut series = database::author_series(&catalog, (fid, mid, lid)).await?;
     series.sort_by(|a, b| utils::fb2sort(&a.name, &b.name));
 
     for serie in series {
@@ -54,18 +54,18 @@ pub async fn root_opds_author_series(
 }
 
 pub async fn root_opds_author_books(
-    pool: &SqlitePool,
+    catalog: &SqlitePool,
     ids: (u32, u32, u32),
     sort: Sort,
 ) -> anyhow::Result<Feed> {
     let (fid, mid, lid) = ids;
     let mut feed = Feed::new("Книги");
     let mut books = match sort {
-        Sort::BySerie(sid) => database::author_serie_books(&pool, (fid, mid, lid, sid)).await?,
-        Sort::NoSerie => database::author_nonserie_books(&pool, (fid, mid, lid)).await?,
+        Sort::BySerie(sid) => database::author_serie_books(&catalog, (fid, mid, lid, sid)).await?,
+        Sort::NoSerie => database::author_nonserie_books(&catalog, (fid, mid, lid)).await?,
         Sort::ByGenre(_) => Vec::new(), // Not Impl
-        Sort::Alphabet => database::author_books(&pool, (fid, mid, lid)).await?,
-        Sort::Added => database::author_books(&pool, (fid, mid, lid)).await?,
+        Sort::Alphabet => database::author_books(&catalog, (fid, mid, lid)).await?,
+        Sort::Added => database::author_books(&catalog, (fid, mid, lid)).await?,
     };
 
     match sort {

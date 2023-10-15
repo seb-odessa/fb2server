@@ -30,14 +30,14 @@ pub use genres::root_opds_genres_series;
 pub use genres::root_opds_meta;
 
 pub async fn root_opds_by_mask(
-    pool: &SqlitePool,
+    catalog: &SqlitePool,
     query: QueryType,
     title: String,
     root: String,
 ) -> anyhow::Result<Feed> {
     let all = &String::from("");
     let mut feed = Feed::new(title);
-    let patterns = database::make_patterns(&pool, query, &all).await?;
+    let patterns = database::make_patterns(&catalog, query, &all).await?;
     for pattern in utils::sorted(patterns) {
         if !pattern.is_empty() {
             let ch = pattern.chars().next().unwrap();
@@ -51,7 +51,7 @@ pub async fn root_opds_by_mask(
 }
 
 pub async fn root_opds_search_by_mask(
-    pool: &SqlitePool,
+    catalog: &SqlitePool,
     query: QueryType,
     title: String,
     root: String,
@@ -61,7 +61,7 @@ pub async fn root_opds_search_by_mask(
 
     loop {
         let mut found = false;
-        let patterns = database::make_patterns(&pool, query, &pattern).await?;
+        let patterns = database::make_patterns(&catalog, query, &pattern).await?;
         let mut tail = patterns
             .into_iter()
             .filter(|name| {
@@ -74,8 +74,8 @@ pub async fn root_opds_search_by_mask(
 
         if found {
             match query {
-                QueryType::Author => add_authors(&pool, &pattern, &mut feed).await?,
-                QueryType::Serie => add_series(&pool, &pattern, &mut feed).await?,
+                QueryType::Author => add_authors(&catalog, &pattern, &mut feed).await?,
+                QueryType::Serie => add_series(&catalog, &pattern, &mut feed).await?,
             }
         }
 

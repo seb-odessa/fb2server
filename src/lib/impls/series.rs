@@ -4,8 +4,8 @@ use crate::utils;
 
 use sqlx::sqlite::SqlitePool;
 
-pub async fn add_series(pool: &SqlitePool, name: &String, feed: &mut Feed) -> anyhow::Result<()> {
-    let mut values = database::find_series(&pool, &name).await?;
+pub async fn add_series(catalog: &SqlitePool, name: &String, feed: &mut Feed) -> anyhow::Result<()> {
+    let mut values = database::find_series(&catalog, &name).await?;
     values.sort_by(|a, b| utils::fb2sort(&a.value, &b.value));
 
     for value in values {
@@ -17,12 +17,12 @@ pub async fn add_series(pool: &SqlitePool, name: &String, feed: &mut Feed) -> an
 }
 
 pub async fn root_opds_serie_books(
-    pool: &SqlitePool,
+    catalog: &SqlitePool,
     id: u32,
     sort: String,
 ) -> anyhow::Result<Feed> {
     let mut feed = Feed::new("Книги в серии");
-    let mut values = database::root_opds_serie_books(&pool, id).await?;
+    let mut values = database::root_opds_serie_books(&catalog, id).await?;
     match sort.as_str() {
         "numbered" => values.sort_by(|a, b| a.num.cmp(&b.num)),
         "alphabet" => values.sort_by(|a, b| utils::fb2sort(&a.name, &b.name)),
