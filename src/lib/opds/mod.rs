@@ -60,7 +60,7 @@ impl Feed {
     }
 }
 
-fn format_feed(feed: Feed) -> String {
+pub fn format_feed(feed: Feed) -> String {
     match make_feed(feed) {
         Ok(xml) => xml,
         Err(err) => format!("{err}"),

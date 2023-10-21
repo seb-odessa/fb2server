@@ -1,5 +1,8 @@
 /target
-*.db
+/test/*
+.vscode
+books.db
+statistic.db
 *.bak
-launch.sh
+*.sh
 Cargo.lock

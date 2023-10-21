@@ -1,6 +1,6 @@
 [package]
 name = "opds_server"
-version = "0.1.0"
+version = "0.3.0"
 edition = "2021"
 
 [lib]
@@ -13,15 +13,18 @@ path = "src/bin/main.rs"
 
 [dependencies]
     anyhow = "1.0"
-    actix-web = "4"
+    actix-rt = "2.9"
+    actix-web = "4.4"
     actix-files = "0.6"
-    sqlx = { version = "0.6", features = [ "runtime-actix-native-tls", "sqlite" ] }
+    sqlx = { version = "0.7", features = [ "runtime-tokio", "sqlite" ] }
     log = "0.4"
     env_logger = "0.10"
-    quick-xml = "0.28"
+    quick-xml = "0.30.0"
     chrono = "0.4"
     lazy_static = "1.4"
     regex = "1.7"
     zip = "0.6"
-    itertools = "0.10"
+    itertools = "0.11.0"
+    base64 = "0.21.4"
+    async-trait = "0.1.74"
 

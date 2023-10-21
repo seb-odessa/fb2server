@@ -1,3 +1,5 @@
+use base64::engine::general_purpose;
+use base64::Engine;
 use std::cmp::*;
 use std::collections::HashSet;
 
@@ -57,11 +59,30 @@ pub fn fb2sort(lhv: &String, rhv: &String) -> Ordering {
     }
 }
 
-pub fn sorted(mut patterns: Vec<String>) -> Vec<String> {
-    // println!("<= {patterns:?}");
-    patterns.sort_by(fb2sort);
-    // println!("=> {patterns:?}");
-    return patterns;
+pub fn sorted<T: Into<String>>(patterns: Vec<T>) -> Vec<String> {
+    let mut strings = patterns
+        .into_iter()
+        .map(|value| value.into())
+        .collect::<Vec<String>>();
+    strings.sort_by(fb2sort);
+    return strings;
+}
+
+pub fn encode<T: Into<String>>(msg: T) -> String {
+    general_purpose::URL_SAFE.encode(msg.into())
+}
+
+pub fn decode<T: Into<String>>(msg: T) -> anyhow::Result<String> {
+    let decoded = general_purpose::URL_SAFE.decode(msg.into())?;
+    let msg = String::from_utf8(decoded)?;
+    Ok(msg)
+}
+
+pub fn decode_with_lossy<T: Into<String>>(msg: T) -> String {
+    match decode(msg) {
+        Ok(decoded) => decoded,
+        Err(err) => format!("{}", err),
+    }
 }
 
 #[cfg(test)]
@@ -160,5 +181,12 @@ mod tests {
             String::from("Дву"),
         ];
         assert_eq!(sorted(vec), exp);
+    }
+
+    #[test]
+    fn test_encode_decode() {
+        let orig = String::from("Some Message content");
+        let encoded: String = encode(&orig);
+        assert_eq!(orig, decode(&encoded).unwrap());
     }
 }

@@ -1,76 +1,182 @@
+use crate::utils;
+use async_trait::async_trait;
+use log::debug;
 use sqlx::sqlite::SqlitePool;
 use sqlx::Row;
 
-pub struct Value {
-    pub id: u32,
-    pub value: String,
+pub mod lib_rus_ec;
+pub use lib_rus_ec::LibRusEcOffline;
+
+#[async_trait]
+pub trait LibraryProvider: Send {
+    async fn get_authors_names_starts_with(
+        &self,
+        mask: &String,
+    ) -> anyhow::Result<(Vec<String>, Vec<String>)>;
+
+    async fn get_authors_names_by_genre_starts_with(
+        &self,
+        genre_name: &String,
+        mask: &String,
+    ) -> anyhow::Result<(Vec<String>, Vec<String>)>;
+
+    async fn get_series_names_starts_with(
+        &self,
+        mask: &String,
+    ) -> anyhow::Result<(Vec<String>, Vec<String>)>;
+
+    async fn get_series_names_by_genre_starts_with(
+        &self,
+        genre_name: &String,
+        mask: &String,
+    ) -> anyhow::Result<(Vec<String>, Vec<String>)>;
+
+    async fn get_authors_by_last_name(&self, qp: AuthorsByLastName) -> anyhow::Result<Vec<Author>>;
+
+    async fn get_series_by_name(&self, qp: SeriesByName) -> anyhow::Result<Vec<Value>>;
+
+    async fn get_meta_genres(&self) -> anyhow::Result<Vec<String>>;
+
+    async fn get_genres_by_meta(&self, qp: GenresByMeta) -> anyhow::Result<Vec<String>>;
+
+    async fn books_by_serie_id(&self, sid: BooksBySerieId) -> anyhow::Result<Vec<BookSerie>>;
+
+    async fn author_full_name(&self, ids: AuthorIds) -> anyhow::Result<String>;
+
+    async fn series_by_author(&self, ids: AuthorIds) -> anyhow::Result<Vec<Serie>>;
+
+    async fn books_by_author(&self, arg: BooksByAuthor) -> anyhow::Result<Vec<BookDesc>>;
 }
-impl Value {
-    pub fn new(id: u32, value: String) -> Self {
-        Self { id, value }
+
+pub trait QueryProvider {
+    type Item;
+    fn query(&self) -> String;
+}
+
+pub struct AuthorsNameStartsWith;
+impl AuthorsNameStartsWith {
+    pub fn new() -> Self {
+        Self
     }
 }
 
-pub struct Author {
-    pub first_name: Value,
-    pub middle_name: Value,
-    pub last_name: Value,
+pub struct SeriesNameStartsWith;
+impl SeriesNameStartsWith {
+    pub fn new() -> Self {
+        Self
+    }
 }
 
-pub struct Serie {
-    pub id: u32,
-    pub name: String,
-    pub count: u32,
+pub struct AuthorsByLastName {
+    name: String,
+}
+impl AuthorsByLastName {
+    pub fn new(name: &String) -> Self {
+        Self { name: name.clone() }
+    }
 }
 
-pub struct BookDesc {
-    pub id: u32,
-    pub num: u32,
-    pub name: String,
-    pub size: u32,
-    pub date: String,
+pub struct SeriesByName {
+    name: String,
+}
+impl SeriesByName {
+    pub fn new(name: &String) -> Self {
+        Self { name: name.clone() }
+    }
 }
 
-pub struct BookSerie {
-    pub id: u32,
-    pub num: u32,
-    pub name: String,
-    pub size: u32,
-    pub date: String,
-    pub author: String,
+pub struct GenresByMeta {
+    name: String,
+}
+impl GenresByMeta {
+    pub fn new(name: &String) -> Self {
+        Self { name: name.clone() }
+    }
 }
 
-#[derive(Clone, Copy, Debug)]
-pub enum QueryType {
-    Author,
-    Serie,
+pub struct AuthorsNameByGenreStartsWith {
+    pub genre_name: String,
+}
+impl AuthorsNameByGenreStartsWith {
+    pub fn new(genre_name: &String) -> Self {
+        Self {
+            genre_name: genre_name.clone(),
+        }
+    }
 }
 
-pub async fn make_patterns(
+pub struct SeriesNameByGenreStartsWith {
+    pub genre_name: String,
+}
+impl SeriesNameByGenreStartsWith {
+    pub fn new(genre_name: &String) -> Self {
+        Self {
+            genre_name: genre_name.clone(),
+        }
+    }
+}
+
+pub struct BooksBySerieId {
+    id: u32,
+}
+impl BooksBySerieId {
+    pub fn new(id: u32) -> Self {
+        Self { id: id }
+    }
+}
+
+pub struct AuthorFullName {
+    author: AuthorIds,
+}
+impl AuthorFullName {
+    pub fn new(author: AuthorIds) -> Self {
+        Self { author: author }
+    }
+}
+
+pub struct SeriesByAuthor {
+    author: AuthorIds,
+}
+impl SeriesByAuthor {
+    pub fn new(author: AuthorIds) -> Self {
+        Self { author: author }
+    }
+}
+
+pub enum BooksFilter {
+    ByTheSerieOnly(u32),
+    WithoutSerieOnly,
+    // ByGenre(u32), NOT IMPL YET
+    All,
+}
+
+pub struct BooksByAuthor {
+    author: AuthorIds,
+    filter: BooksFilter,
+}
+impl BooksByAuthor {
+    pub fn new(author: AuthorIds, filter: BooksFilter) -> Self {
+        Self {
+            author: author,
+            filter: filter,
+        }
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////
+
+pub async fn get_sequels<T: QueryProvider>(
     pool: &SqlitePool,
-    query: QueryType,
+    provider: &T,
     pattern: &String,
 ) -> anyhow::Result<Vec<String>> {
     let len = (pattern.chars().count() + 1) as u32;
-    let sql = match query {
-        QueryType::Author => {
-            r#"
-            SELECT DISTINCT substr(value, 1, $1) AS name
-            FROM last_names WHERE value LIKE $2 || '%'
-            "#
-        }
-        QueryType::Serie => {
-            r#"
-            SELECT DISTINCT substr(value, 1, $1) AS name
-            FROM series WHERE value LIKE $2 || '%'
-            "#
-        }
-    };
+    let sql = provider.query();
 
     let rows = sqlx::query(&sql)
         .bind(len)
-        .bind(format!("{pattern}"))
-        .fetch_all(&*pool)
+        .bind(pattern)
+        .fetch_all(pool)
         .await?;
 
     let mut out = Vec::new();
@@ -82,102 +188,113 @@ pub async fn make_patterns(
     Ok(out)
 }
 
-pub async fn find_authors(pool: &SqlitePool, name: &String) -> anyhow::Result<Vec<Author>> {
-    let sql = r#"
-        SELECT DISTINCT
-	        first_names.id AS first_id,
-            middle_names.id AS middle_id,
-            last_names.id AS last_id,
-            first_names.value AS first_name,
-            middle_names.value AS middle_name,
-            last_names.value AS last_name
-        FROM authors_map, first_names, middle_names, last_names
-        WHERE
-            last_names.id = (SELECT id FROM last_names WHERE value = $1)
-	    AND first_names.id = first_name_id
-	    AND middle_names.id = middle_name_id
-	    AND last_names.id = last_name_id;
-    "#;
+pub async fn get_substings<T: QueryProvider>(
+    pool: &SqlitePool,
+    provider: &T,
+    pattern: &String,
+) -> anyhow::Result<(Vec<String>, Vec<String>)> {
+    let mut mask = pattern.clone();
+    let mut exact = Vec::new();
+    let mut rest = Vec::new();
 
-    let rows = sqlx::query(&sql).bind(name).fetch_all(&*pool).await?;
-    let mut out = Vec::new();
-    for row in rows {
-        out.push(Author {
-            first_name: Value::new(row.try_get("first_id")?, row.try_get("first_name")?),
-            middle_name: Value::new(row.try_get("middle_id")?, row.try_get("middle_name")?),
-            last_name: Value::new(row.try_get("last_id")?, row.try_get("last_name")?),
-        });
+    loop {
+        debug!("mask: '{mask}'");
+
+        let patterns = get_sequels(&pool, provider, &mask).await?;
+        debug!("patterns: {:?}", patterns);
+        let len = patterns.len();
+        let mut tail = patterns
+            .into_iter()
+            .filter(|name| *name != mask)
+            .collect::<Vec<String>>();
+
+        if len != tail.len() {
+            exact.push(mask.clone());
+        }
+
+        debug!("tail: {:?}", tail);
+        debug!("exact: {:?}", exact);
+
+        if tail.is_empty() {
+            break;
+        } else if 1 == tail.len() {
+            std::mem::swap(&mut mask, &mut tail[0]);
+        } else {
+            for prefix in utils::sorted(tail) {
+                rest.push(prefix);
+            }
+            debug!("rest: {:?}", rest);
+            break;
+        }
     }
 
-    Ok(out)
+    debug!("-> {:?} {:?}", exact, rest);
+
+    Ok((exact, rest))
 }
 
-pub async fn find_series(pool: &SqlitePool, name: &String) -> anyhow::Result<Vec<Value>> {
-    let sql = "SELECT DISTINCT id, value FROM series WHERE value = $1";
-    let rows = sqlx::query(&sql).bind(name).fetch_all(&*pool).await?;
-    let mut out = Vec::new();
-    for row in rows {
-        out.push(Value::new(row.try_get("id")?, row.try_get("value")?));
+////////////////////////////////////////////////////////////////////////////////////////////////
+#[derive(Debug, PartialEq)]
+pub struct Value {
+    pub id: u32,
+    pub value: String,
+}
+impl Value {
+    pub fn new(id: u32, value: String) -> Self {
+        Self { id, value }
     }
-    Ok(out)
 }
 
-pub async fn author(pool: &SqlitePool, ids: (u32, u32, u32)) -> anyhow::Result<String> {
-    let (fid, mid, lid) = ids;
-    let sql = r#"
-        SELECT
-	        first_names.value || ' ' ||
-	        middle_names.value || ' ' ||
-	        last_names.value AS author
-        FROM first_names, middle_names, last_names
-        WHERE first_names.id = $1 AND middle_names.id = $2 AND last_names.id = $3;
-    "#;
-
-    let row = sqlx::query(&sql)
-        .bind(fid)
-        .bind(mid)
-        .bind(lid)
-        .fetch_one(&*pool)
-        .await?;
-    Ok(row.try_get("author")?)
+#[derive(Debug, PartialEq)]
+pub struct Author {
+    pub first_name: Value,
+    pub middle_name: Value,
+    pub last_name: Value,
 }
 
-pub async fn author_series(pool: &SqlitePool, ids: (u32, u32, u32)) -> anyhow::Result<Vec<Serie>> {
-    let (fid, mid, lid) = ids;
-    let sql = r#"
-        SELECT
-            series.id AS id,
-            series.value AS name,
-            count(series.value) as count
-        FROM authors_map
-        LEFT JOIN books ON authors_map.book_id = books.book_id
-        LEFT JOIN titles ON books.title_id = titles.id
-        LEFT JOIN series_map ON  books.book_id = series_map.book_id
-        LEFT JOIN series ON series_map.serie_id = series.id
-        LEFT JOIN dates ON  books.date_id = dates.id
-        WHERE
-        first_name_id = $1 AND middle_name_id = $2 AND last_name_id = $3
-        AND name IS NOT NULL
-        GROUP by 1, 2;
-        "#;
-
-    let rows = sqlx::query(&sql)
-        .bind(fid)
-        .bind(mid)
-        .bind(lid)
-        .fetch_all(&*pool)
-        .await?;
-    let mut out = Vec::new();
-    for row in rows {
-        out.push(Serie {
-            id: row.try_get("id")?,
-            name: row.try_get("name")?,
-            count: row.try_get("count")?,
-        });
+#[derive(Debug, Clone, PartialEq)]
+pub struct AuthorIds {
+    first_name_id: u32,
+    middle_name_id: u32,
+    last_name_id: u32,
+}
+impl From<(u32, u32, u32)> for AuthorIds {
+    fn from(args: (u32, u32, u32)) -> Self {
+        Self {
+            first_name_id: args.0,
+            middle_name_id: args.1,
+            last_name_id: args.2,
+        }
     }
-
-    Ok(out)
 }
+
+#[derive(Debug, PartialEq)]
+pub struct Serie {
+    pub id: u32,
+    pub name: String,
+    pub count: u32,
+}
+
+#[derive(Debug, PartialEq)]
+pub struct BookDesc {
+    pub id: u32,
+    pub num: u32,
+    pub name: String,
+    pub size: u32,
+    pub date: String,
+}
+
+#[derive(Debug, PartialEq)]
+pub struct BookSerie {
+    pub id: u32,
+    pub num: u32,
+    pub name: String,
+    pub size: u32,
+    pub date: String,
+    pub author: String,
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////
 
 pub async fn author_serie_books(
     pool: &SqlitePool,
@@ -345,53 +462,6 @@ pub async fn root_opds_author_added_books(
     Ok(out)
 }
 
-pub async fn root_opds_serie_books(pool: &SqlitePool, id: u32) -> anyhow::Result<Vec<BookSerie>> {
-    let sql = r#"
-    SELECT
-        books.book_id AS id,
-        series_map.serie_num AS num,
-        titles.value AS name,
-        books.book_size AS size,
-        dates.value AS added,
-        first_names.value || ' ' || middle_names.value || ' ' || last_names.value AS author
-    FROM authors_map
-    LEFT JOIN books ON authors_map.book_id = books.book_id
-    LEFT JOIN titles ON books.title_id = titles.id
-    LEFT JOIN series_map ON  books.book_id = series_map.book_id
-    LEFT JOIN series ON series_map.serie_id = series.id
-    LEFT JOIN dates ON  books.date_id = dates.id
-    LEFT JOIN first_names ON first_names.id = first_name_id
-    LEFT JOIN middle_names ON middle_names.id = middle_name_id
-    LEFT JOIN last_names ON last_names.id = last_name_id
-    WHERE series.id = $1
-    ORDER BY 2, 3, 5, 6;
-    "#;
-    let rows = sqlx::query(&sql).bind(id).fetch_all(&*pool).await?;
-    let mut out = Vec::new();
-    for row in rows {
-        out.push(BookSerie {
-            id: row.try_get("id")?,
-            num: row.try_get("num")?,
-            name: row.try_get("name")?,
-            size: row.try_get("size")?,
-            date: row.try_get("added")?,
-            author: row.try_get("author")?,
-        });
-    }
-
-    Ok(out)
-}
-
-pub async fn genres_meta(pool: &SqlitePool) -> anyhow::Result<Vec<String>> {
-    let sql = "SELECT DISTINCT meta FROM genres_def ORDER BY 1;";
-    let rows = sqlx::query(&sql).fetch_all(&*pool).await?;
-    let mut out = Vec::new();
-    for row in rows {
-        out.push(row.try_get("meta")?);
-    }
-    Ok(out)
-}
-
 pub async fn genres_by_meta(pool: &SqlitePool, meta: &String) -> anyhow::Result<Vec<String>> {
     let sql = "SELECT DISTINCT genre FROM genres_def WHERE meta = $1 ORDER BY 1;";
     let rows = sqlx::query(&sql).bind(meta).fetch_all(&*pool).await?;
@@ -399,75 +469,6 @@ pub async fn genres_by_meta(pool: &SqlitePool, meta: &String) -> anyhow::Result<
     for row in rows {
         out.push(row.try_get("genre")?);
     }
-    Ok(out)
-}
-
-pub async fn root_opds_genres_series(
-    pool: &SqlitePool,
-    genre: &String,
-) -> anyhow::Result<Vec<Serie>> {
-    let sql = r#"
-        WITH genre_codes(id, value) AS (
-            SELECT id, code FROM genres_def LEFT JOIN genres
-            WHERE genre = $1 AND value = code
-        )
-        SELECT series.id AS id, series.value AS name, count(series.value) AS count
-        FROM genre_codes
-        LEFT JOIN genres_map ON genres_map.genre_id = genre_codes.id
-        LEFT JOIN series_map ON series_map.book_id = genres_map.book_id
-        LEFT JOIN series ON series.id = series_map.serie_id
-        WHERE series.value IS NOT NULL
-        GROUP BY 1, 2
-    "#;
-
-    let rows = sqlx::query(&sql).bind(genre).fetch_all(&*pool).await?;
-    let mut out = Vec::new();
-    for row in rows {
-        out.push(Serie {
-            id: row.try_get("id")?,
-            name: row.try_get("name")?,
-            count: row.try_get("count")?,
-        });
-    }
-
-    Ok(out)
-}
-
-pub async fn root_opds_genres_authors(
-    pool: &SqlitePool,
-    genre: &String,
-) -> anyhow::Result<Vec<Author>> {
-    let sql = r#"
-        WITH genre_codes(id, value) AS (
-            SELECT id, code FROM genres_def LEFT JOIN genres
-        WHERE genre = $1 AND value = code
-        )
-        SELECT DISTINCT
-            first_names.id AS first_id,
-            middle_names.id AS middle_id,
-            last_names.id AS last_id,
-            first_names.value AS first_name,
-            middle_names.value AS middle_name,
-            last_names.value AS last_name
-        FROM genre_codes
-        LEFT JOIN genres_map ON genres_map.genre_id = genre_codes.id
-        LEFT JOIN authors_map ON authors_map.book_id = genres_map.book_id
-        LEFT JOIN first_names ON first_names.id = authors_map.first_name_id
-        LEFT JOIN middle_names ON middle_names.id = authors_map.middle_name_id
-        LEFT JOIN last_names ON last_names.id = authors_map.last_name_id
-        ORDER BY 6,4,5
-    "#;
-
-    let rows = sqlx::query(&sql).bind(genre).fetch_all(&*pool).await?;
-    let mut out = Vec::new();
-    for row in rows {
-        out.push(Author {
-            first_name: Value::new(row.try_get("first_id")?, row.try_get("first_name")?),
-            middle_name: Value::new(row.try_get("middle_id")?, row.try_get("middle_name")?),
-            last_name: Value::new(row.try_get("last_id")?, row.try_get("last_name")?),
-        });
-    }
-
     Ok(out)
 }
 
@@ -506,13 +507,17 @@ pub async fn get_favorites(pool: &SqlitePool) -> anyhow::Result<Vec<u32>> {
     Ok(out)
 }
 
-pub async fn root_opds_favorite_authors(pool: &SqlitePool, ids: Vec<u32>) -> anyhow::Result<Vec<Author>> {
+pub async fn root_opds_favorite_authors(
+    pool: &SqlitePool,
+    ids: Vec<u32>,
+) -> anyhow::Result<Vec<Author>> {
     if ids.is_empty() {
-        return Ok(vec![])
+        return Ok(vec![]);
     }
 
-    let params = format!("?{}", ", ?".repeat(ids.len()-1));
-    let sql = format!("
+    let params = format!("?{}", ", ?".repeat(ids.len() - 1));
+    let sql = format!(
+        "
         SELECT DISTINCT
             first_names.id AS first_id,
             middle_names.id AS middle_id,
@@ -526,12 +531,12 @@ pub async fn root_opds_favorite_authors(pool: &SqlitePool, ids: Vec<u32>) -> any
         LEFT JOIN last_names ON last_names.id = authors_map.last_name_id
         WHERE book_id IN ({params})
         ORDER BY 6,4,5
-    ");
+    "
+    );
     let mut query = sqlx::query(&sql);
     for id in &ids {
         query = query.bind(id);
     }
-
 
     let rows = query.fetch_all(&*pool).await?;
     let mut out = Vec::new();
@@ -545,3 +550,5 @@ pub async fn root_opds_favorite_authors(pool: &SqlitePool, ids: Vec<u32>) -> any
 
     Ok(out)
 }
+
+/////////////////////////// Generic Functions
