@@ -1,12 +1,11 @@
-use chrono;
-use quick_xml::events::{BytesText, Event};
-use quick_xml::writer::Writer;
 use actix_web::Responder;
+use chrono;
 use log::error;
+use quick_xml::events::{BytesDecl, BytesText, Event};
+use quick_xml::writer::Writer;
 
 use std::io::Cursor;
 
-const XML_HEAD: &'static str = r#"xml version="1.0" encoding="utf-8""#;
 pub struct Entry {
     pub id: String,
     pub title: String,
@@ -81,7 +80,14 @@ pub fn handle_feed(feed_result: anyhow::Result<Feed>) -> impl Responder {
 fn make_feed(feed: Feed) -> anyhow::Result<String> {
     let mut w = Writer::new(Cursor::new(Vec::new()));
 
-    w.write_event(Event::PI(BytesText::from_escaped(XML_HEAD)))?;
+    const XML_VERSION: &'static str = "1.0";
+    const XML_ENCODING: &'static str = "utf-8";
+
+    w.write_event(Event::Decl(BytesDecl::new(
+        XML_VERSION,
+        Some(XML_ENCODING),
+        None,
+    )))?;
     w.create_element("feed")
         .with_attribute(("xmlns", "http://www.w3.org/2005/Atom"))
         .with_attribute(("xmlns:dc", "http://purl.org/dc/terms/"))
@@ -119,11 +125,11 @@ fn make_feed(feed: Feed) -> anyhow::Result<String> {
                         .with_attribute(("type", entry.htype.as_str()))
                         .write_empty()?;
 
-                    Ok(())
+                    Ok::<(), quick_xml::Error>(())
                 })?;
             }
 
-            Ok(())
+            Ok::<(), quick_xml::Error>(())
         })?;
 
     Ok(String::from_utf8_lossy(&w.into_inner().into_inner()).into_owned())
