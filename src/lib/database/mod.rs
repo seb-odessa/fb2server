@@ -555,3 +555,42 @@ pub async fn root_opds_favorite_authors(
 
     Ok(out)
 }
+
+pub async fn root_opds_genres_dates(
+    catalog: &SqlitePool,
+    genre: &String,
+) -> anyhow::Result<Vec<BookDesc>> {
+    let sql = r#"
+        WITH
+            last AS (SELECT id, value FROM dates ORDER BY value DESC),
+            codes AS (SELECT id FROM genres_def LEFT JOIN genres WHERE genre = $1 AND value = code)
+        SELECT
+            books.book_id AS id,
+            series_map.serie_num AS num,
+            titles.value AS name,
+            books.book_size AS size,
+            last.value AS added
+        FROM last
+        JOIN codes ON codes.id = genres_map.genre_id
+        JOIN books ON books.date_id = last.id
+        LEFT JOIN genres_map ON genres_map.book_id = books.book_id
+        LEFT JOIN titles ON titles.id = books.title_id
+        LEFT JOIN series_map ON  books.book_id = series_map.book_id
+        ORDER BY 1 DESC
+        LIMIT 45;
+    "#;
+
+    let rows = sqlx::query(&sql).bind(genre).fetch_all(&*catalog).await?;
+    let mut out = Vec::new();
+    for row in rows {
+        out.push(BookDesc {
+            id: row.try_get("id")?,
+            num: row.try_get("num")?,
+            name: row.try_get("name")?,
+            size: row.try_get("size")?,
+            date: row.try_get("added")?,
+        });
+    }
+
+    Ok(out)
+}

@@ -76,6 +76,7 @@ async fn main() -> anyhow::Result<()> {
             .service(root_opds_genres_genre)
             .service(root_opds_genres_series)
             .service(root_opds_genres_authors)
+            .service(root_opds_genres_dates)
             // Favorite Books
             .service(root_opds_favorite_authors)
             // Books
@@ -162,6 +163,7 @@ async fn root_opds_genres_genre(path: web::Path<String>) -> impl Responder {
     let mut feed = opds::Feed::new(format!("Книги '{genre}'"));
     feed.add("По сериям", &format!("/opds/genre/series/{genre}"));
     feed.add("По авторам", &format!("/opds/genre/authors/{genre}"));
+    feed.add("Последние поступления (45)", &format!("/opds/genre/dates/{genre}"));
     opds::handle_feed(Ok(feed))
 }
 
@@ -188,6 +190,19 @@ async fn root_opds_genres_authors(
 
     let catalog = ctx.catalog.lock().unwrap();
     let feed = impls::root_opds_genres_authors(&catalog, &genre).await;
+    opds::handle_feed(feed)
+}
+
+#[get("/opds/genre/dates/{genre}")]
+async fn root_opds_genres_dates(
+    ctx: web::Data<AppState>,
+    path: web::Path<String>,
+) -> impl Responder {
+    let genre = path.into_inner();
+    info!("/opds/genre/dates/{genre}");
+
+    let catalog = ctx.catalog.lock().unwrap();
+    let feed = impls::root_opds_genres_dates(&catalog, &genre).await;
     opds::handle_feed(feed)
 }
 

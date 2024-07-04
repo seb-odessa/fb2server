@@ -67,3 +67,19 @@ pub async fn root_opds_genres_authors(
     }
     return Ok(feed);
 }
+
+pub async fn root_opds_genres_dates(catalog: &SqlitePool, genre: &String) -> anyhow::Result<Feed> {
+    let mut feed = Feed::new(genre);
+    let  books = database::root_opds_genres_dates(&catalog, genre).await?;
+    // authors.sort_by(|a, b| utils::fb2sort(&a.first_name.value, &b.first_name.value));
+    for book in books {
+        let id = book.id;
+        let num = book.num;
+        let name = book.name;
+        let date = book.date;
+        let title = format!("{num} - {name} ({date})");
+        let link = format!("/opds/book/{id}");
+        feed.book(title, link);
+    }
+    return Ok(feed);
+}
