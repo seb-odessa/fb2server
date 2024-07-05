@@ -44,8 +44,12 @@ async fn main() -> anyhow::Result<()> {
     env_logger::init();
 
     let (addr, port, database, statistic, library) = read_params();
-    let catalog = SqlitePool::connect(&database).await?;
-    let statistic = SqlitePool::connect(&statistic).await?;
+    let catalog = SqlitePool::connect(&database)
+        .await
+        .expect("Can't connect to books database");
+    let statistic = SqlitePool::connect(&statistic)
+        .await
+        .expect("Can't connect to statistic database");
     database::init_statistic_db(&statistic).await?;
 
     let ctx = web::Data::new(AppState::new(catalog, statistic, library));
@@ -163,7 +167,7 @@ async fn root_opds_genres_genre(path: web::Path<String>) -> impl Responder {
     let mut feed = opds::Feed::new(format!("Книги '{genre}'"));
     feed.add("По сериям", &format!("/opds/genre/series/{genre}"));
     feed.add("По авторам", &format!("/opds/genre/authors/{genre}"));
-    feed.add("Последние поступления (45)", &format!("/opds/genre/dates/{genre}"));
+    feed.add("Последние 45 книг", &format!("/opds/genre/dates/{genre}"));
     opds::handle_feed(Ok(feed))
 }
 

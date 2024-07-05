@@ -51,6 +51,8 @@ pub async fn make_patterns(
     query: QueryType,
     pattern: &String,
 ) -> anyhow::Result<Vec<String>> {
+    use futures::stream::StreamExt;
+
     let len = (pattern.chars().count() + 1) as u32;
     let sql = match query {
         QueryType::Author => {
@@ -67,15 +69,14 @@ pub async fn make_patterns(
         }
     };
 
-    let rows = sqlx::query(&sql)
+    let mut rows = sqlx::query(&sql)
         .bind(len)
         .bind(format!("{pattern}"))
-        .fetch_all(&*catalog)
-        .await?;
+        .fetch(catalog);
 
     let mut out = Vec::new();
-    for row in rows {
-        let name: String = row.try_get("name")?;
+    while let Some(row) = rows.next().await {
+        let name: String = row?.try_get("name")?;
         out.push(name);
     }
 

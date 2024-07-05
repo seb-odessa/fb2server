@@ -6,6 +6,7 @@ use quick_xml::writer::Writer;
 
 use std::io::Cursor;
 
+#[derive(Debug)]
 pub struct Entry {
     pub id: String,
     pub title: String,
@@ -36,6 +37,7 @@ impl Entry {
     }
 }
 
+#[derive(Debug)]
 pub struct Feed {
     pub title: String,
     pub entries: Vec<Entry>,
@@ -107,11 +109,6 @@ fn make_feed(feed: Feed) -> anyhow::Result<String> {
                 .with_attribute(("rel", "/start"))
                 .with_attribute(("type", "application/atom+xml;profile=opds-catalog"))
                 .write_empty()?;
-
-            //            <link
-            // href="/b/240726/fb2"
-            // rel="http://opds-spec.org/acquisition/open-access"
-            // type="application/fb2+zip" />
 
             for entry in &feed.entries {
                 w.create_element("entry").write_inner_content(|w| {

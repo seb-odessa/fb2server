@@ -1,10 +1,11 @@
-use sqlx::sqlite::SqlitePool;
-use std::collections::HashSet;
-
 use crate::database;
 use crate::database::QueryType;
 use crate::opds::Feed;
 use crate::utils;
+
+use percent_encoding::{utf8_percent_encode, NON_ALPHANUMERIC};
+use sqlx::sqlite::SqlitePool;
+use std::collections::HashSet;
 
 lazy_static! {
     static ref WRONG: HashSet<char> = HashSet::from(['À', '#', '.', '-', '%']);
@@ -85,7 +86,8 @@ pub async fn root_opds_search_by_mask(
             std::mem::swap(&mut pattern, &mut tail[0]);
         } else {
             for prefix in utils::sorted(tail) {
-                feed.add(format!("{prefix}..."), format!("{root}/{prefix}"));
+                let encoded = utf8_percent_encode(prefix.as_str(), NON_ALPHANUMERIC).to_string();
+                feed.add(format!("{prefix}..."), format!("{root}/{encoded}"));
             }
             break;
         }
