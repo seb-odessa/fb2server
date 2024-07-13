@@ -1,4 +1,4 @@
-use actix_web::Responder;
+use actix_web::{Responder, Result};
 use chrono;
 use log::error;
 use quick_xml::events::{BytesDecl, BytesText, Event};
@@ -50,7 +50,7 @@ impl Feed {
         }
     }
 
-    pub fn add<T: Into<String>>(&mut self, title: T, link: T) {
+    pub fn catalog<T: Into<String>>(&mut self, title: T, link: T) {
         let entry = Entry::catalog(title, link);
         self.entries.push(entry);
     }
@@ -58,6 +58,11 @@ impl Feed {
     pub fn book<T: Into<String>>(&mut self, title: T, link: T) {
         let entry = Entry::book(title, link);
         self.entries.push(entry);
+    }
+
+    pub fn format(self) -> Result<impl Responder> {
+        let content = format_feed(self);
+        Ok(content)
     }
 }
 

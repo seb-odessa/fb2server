@@ -1,5 +1,9 @@
+pub mod books;
+
 use std::cmp::*;
 use std::collections::HashSet;
+
+pub use books::extract_book;
 
 lazy_static! {
     static ref CYRILLIC_UC: HashSet<char> = HashSet::from([
