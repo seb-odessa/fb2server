@@ -116,9 +116,10 @@ async fn main() -> anyhow::Result<()> {
 async fn root(_ctx: web::Data<AppState>) -> impl Responder {
     info!("/opds");
     let mut feed = Feed::new("Каталог");
-    feed.catalog("Поиск книг по авторам", "/opds/authors");
-    feed.catalog("Поиск книг по сериям", "/opds/series");
-    feed.catalog("Поиск книг по жанрам", "/opds/genres");
+    feed.catalog("Поиск по авторам", "/opds/authors");
+    feed.catalog("Поиск по сериям", "/opds/series");
+    feed.catalog("Поиск по жанрам", "/opds/genres");
+    feed.catalog("Поиск по ниименованиям", "/opds/titles");
     feed.catalog("Любимые авторы ", "/opds/favorites");
     feed.format()
 }
