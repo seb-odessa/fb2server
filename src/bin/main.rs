@@ -122,7 +122,7 @@ async fn opds() -> impl Responder {
     feed.catalog("Поиск по авторам", "/opds/authors");
     feed.catalog("Поиск по сериям", "/opds/series");
     feed.catalog("Поиск по жанрам", "/opds/genres");
-    feed.catalog("Поиск по ниименованиям", "/opds/titles");
+    feed.catalog("Поиск по наименованиям", "/opds/titles");
     feed.catalog("Любимые авторы ", "/opds/favorites");
     feed.format()
 }
@@ -133,6 +133,7 @@ async fn opds_authors(ctx: AppCtx) -> impl Responder {
     let mut feed;
     if let Ok(api) = ctx.api.lock() {
         feed = Feed::new("Поиск книг по авторам");
+        feed.catalog("[Home]", "/opds");
         let all = String::from("");
         let patterns = api.authors_next_char_by_prefix(&all).map_err(OpdsError)?;
         for prefix in patterns.into_iter() {
@@ -156,6 +157,7 @@ async fn opds_authors_by_mask(ctx: AppCtx, args: web::Path<String>) -> impl Resp
     let mut feed;
     if let Ok(api) = ctx.api.lock() {
         feed = Feed::new("Поиск книг по авторам");
+        feed.catalog("[Home]", "/opds");
 
         let fetcher = |s: &String| api.authors_next_char_by_prefix(s);
         let (exact, tail) = lib::search_by_mask(&pattern, fetcher).map_err(OpdsError)?;
@@ -214,6 +216,7 @@ async fn opds_series_by_author(ctx: AppCtx, args: web::Path<(u32, u32, u32)>) ->
     let mut feed;
     if let Ok(api) = ctx.api.lock() {
         feed = Feed::new("Серии автора");
+        feed.catalog("[Home]", "/opds");
         let series = api.series_by_author_ids(fid, mid, lid).map_err(OpdsError)?;
         for serie in series.iter() {
             let title = format!("{serie}");
@@ -243,6 +246,7 @@ async fn opds_books_by_author_nonserie(
     let mut feed;
     if let Ok(api) = ctx.api.lock() {
         feed = Feed::new("Книги без серий");
+        feed.catalog("[Home]", "/opds");
         let books = api
             .books_by_author_ids_without_serie(fid, mid, lid)
             .map_err(OpdsError)?;
@@ -268,9 +272,10 @@ async fn opds_books_by_author_and_genre(ctx: AppCtx, args: web::Path<u32>) -> im
     let genre = args.into_inner();
     info!("/opds/books/author/genre/{genre}");
 
-    let feed;
+    let mut feed;
     if let Ok(_api) = ctx.api.lock() {
         feed = Feed::new("Книги по жанрам");
+        feed.catalog("[Home]", "/opds");
     } else {
         feed = Feed::new("Can't lock API");
     }
@@ -288,7 +293,8 @@ async fn opds_books_by_author_alphabet(
 
     let mut feed;
     if let Ok(api) = ctx.api.lock() {
-        feed = Feed::new("Все книги по алфавиту");
+        feed = Feed::new("Книги по алфавиту");
+        feed.catalog("[Home]", "/opds");
         let books = api.books_by_author_ids(fid, mid, lid).map_err(OpdsError)?;
         for book in books.iter() {
             let title = format!("{book}");
@@ -317,7 +323,8 @@ async fn opds_books_by_author_datesort(
 
     let mut feed;
     if let Ok(api) = ctx.api.lock() {
-        feed = Feed::new("Все книги по алфавиту");
+        feed = Feed::new("Книги по дате поступления");
+        feed.catalog("[Home]", "/opds");
         let mut books = api.books_by_author_ids(fid, mid, lid).map_err(OpdsError)?;
         books.sort_by(|a, b| b.added.cmp(&a.added));
         for book in books.iter() {
@@ -344,6 +351,7 @@ async fn opds_series(ctx: AppCtx) -> impl Responder {
     let mut feed;
     if let Ok(api) = ctx.api.lock() {
         feed = Feed::new("Поиск книг по сериям");
+        feed.catalog("[Home]", "/opds");
         let all = String::from("");
         let patterns = api.series_next_char_by_prefix(&all).map_err(OpdsError)?;
         for prefix in patterns.into_iter() {
@@ -367,7 +375,7 @@ async fn opds_series_by_mask(ctx: AppCtx, args: web::Path<String>) -> impl Respo
     let mut feed;
     if let Ok(api) = ctx.api.lock() {
         feed = Feed::new("Поиск книг по сериям");
-
+        feed.catalog("[Home]", "/opds");
         let fetcher = |s: &String| api.series_next_char_by_prefix(s);
         let (exact, tail) = lib::search_by_mask(&pattern, fetcher).map_err(OpdsError)?;
 
@@ -400,6 +408,7 @@ async fn opds_books_by_serie(ctx: AppCtx, args: web::Path<u32>) -> impl Responde
     let mut feed;
     if let Ok(api) = ctx.api.lock() {
         feed = Feed::new("Книги в серии");
+        feed.catalog("[Home]", "/opds");
         let books = api.books_by_serie_id(id).map_err(OpdsError)?;
         for book in books.iter() {
             let title = format!("{book}");
@@ -419,7 +428,8 @@ async fn opds_genres(ctx: AppCtx) -> impl Responder {
 
     let mut feed;
     if let Ok(api) = ctx.api.lock() {
-        feed = Feed::new("Книги по жанрам");
+        feed = Feed::new("Жанры");
+        feed.catalog("[Home]", "/opds");
         let metas = api.meta_genres().map_err(OpdsError)?;
         for meta in metas.into_iter() {
             let encoded = utf8_percent_encode(meta.as_str(), NON_ALPHANUMERIC).to_string();
@@ -440,7 +450,7 @@ async fn opds_genres_by_meta(ctx: AppCtx, args: web::Path<String>) -> impl Respo
 
     let mut feed;
     if let Ok(api) = ctx.api.lock() {
-        feed = Feed::new("Книги по поджанрам");
+        feed = Feed::new("Поджанры");
         let genres = api.genres_by_meta(&meta).map_err(OpdsError)?;
         for genre in genres.into_iter() {
             let title = genre.value;
@@ -460,6 +470,7 @@ async fn opds_genre_by_id(path: web::Path<u32>) -> impl Responder {
     info!("/opds/genre/id/{gid}");
 
     let mut feed = Feed::new(format!("Книги по жанру"));
+    feed.catalog("[Home]", "/opds");
     feed.catalog("Список авторов", &format!("/opds/authors/genre/{gid}"));
     feed.catalog("Список серий", &format!("/opds/series/genre/{gid}"));
 
@@ -483,6 +494,7 @@ async fn opds_authors_by_genre(ctx: AppCtx, args: web::Path<u32>) -> impl Respon
     let mut feed;
     if let Ok(api) = ctx.api.lock() {
         feed = Feed::new("Авторы по жанру");
+        feed.catalog("[Home]", "/opds");
         let authors = api.authors_by_genre_id(gid).map_err(OpdsError)?;
         for author in authors.into_iter() {
             let title = format!("{author}");
@@ -506,7 +518,7 @@ async fn opds_series_by_genre(ctx: AppCtx, args: web::Path<u32>) -> impl Respond
     let mut feed;
     if let Ok(api) = ctx.api.lock() {
         feed = Feed::new("Серии по жанру");
-
+        feed.catalog("[Home]", "/opds");
         let series = api.series_by_genre_id(gid).map_err(OpdsError)?;
         for serie in series.iter() {
             let title = format!("{serie}");
@@ -531,6 +543,7 @@ async fn opds_books_by_genre_year_month(
     let mut feed;
     if let Ok(api) = ctx.api.lock() {
         feed = Feed::new("Книги в серии по месяцам");
+        feed.catalog("[Home]", "/opds");
         let date = format!("{}-{:02}-%", year, month);
         let books = api
             .books_by_genre_id_and_date(gid, date)
@@ -568,6 +581,7 @@ async fn opds_books_by_author_and_serie(
     let mut feed;
     if let Ok(api) = ctx.api.lock() {
         feed = Feed::new("Все книги по алфавиту");
+        feed.catalog("[Home]", "/opds");
         let books = api
             .books_by_author_ids_and_serie_id(fid, mid, lid, sid)
             .map_err(OpdsError)?;
