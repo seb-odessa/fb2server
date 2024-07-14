@@ -21,6 +21,8 @@ const DEFAULT_DATABASE: &'static str = "file:/lib.rus.ec/books.db?mode=ro";
 const DEFAULT_STATISTIC: &'static str = "file:statistic.db?mode=rwc";
 const DEFAULT_LIBRARY: &'static str = "/lib.rus.ec";
 
+type AppCtx = web::Data<AppState>;
+
 struct AppState {
     api: Mutex<OpdsApi>,
     storage: PathBuf,
@@ -80,33 +82,32 @@ async fn main() -> anyhow::Result<()> {
     HttpServer::new(move || {
         App::new()
             .app_data(ctx.clone())
-            .service(root)
+            .service(opds)
             // Books by Authors
-            .service(root_authors)
-            .service(root_authors_by_mask)
-            .service(root_authors_by_genre)
-            .service(root_author_by_id)
+            .service(opds_authors)
+            .service(opds_authors_by_mask)
+            .service(opds_authors_by_genre)
+            .service(opds_author_by_id)
             // Books by Series
-            .service(root_series)
-            .service(root_series_by_mask)
-            .service(root_series_by_author)
-            .service(root_series_by_genre)
+            .service(opds_series)
+            .service(opds_series_by_mask)
+            .service(opds_series_by_author)
+            .service(opds_series_by_genre)
             // Books by Genres
-            .service(root_genres)
-            .service(root_genres_by_meta)
-            .service(root_genre_by_id)
+            .service(opds_genres)
+            .service(opds_genres_by_meta)
+            .service(opds_genre_by_id)
             // Books
-            .service(root_books_by_author_and_serie)
-            .service(root_books_by_author_nonserie)
-            .service(root_books_by_author_and_genre)
-            .service(root_books_by_author_alphabet)
-            .service(root_books_by_author_datesort)
-            .service(root_books_by_serie)
-            .service(root_books_by_genre_and_date)
-            .service(root_book_upload)
-            // Favorite Books
-            // .service(root_opds_favorite_authors)
-
+            .service(opds_books_by_author_and_serie)
+            .service(opds_books_by_author_nonserie)
+            .service(opds_books_by_author_and_genre)
+            .service(opds_books_by_author_alphabet)
+            .service(opds_books_by_author_datesort)
+            .service(opds_books_by_serie)
+            .service(opds_books_by_genre_year_month)
+            .service(opds_book_upload)
+        // Favorite Books
+        // .service(opds_opds_favorite_authors)
     })
     .bind((address.as_str(), port))?
     .run()
@@ -115,7 +116,7 @@ async fn main() -> anyhow::Result<()> {
 }
 
 #[get("/opds")]
-async fn root(_ctx: web::Data<AppState>) -> impl Responder {
+async fn opds() -> impl Responder {
     info!("/opds");
     let mut feed = Feed::new("Каталог");
     feed.catalog("Поиск по авторам", "/opds/authors");
@@ -127,7 +128,7 @@ async fn root(_ctx: web::Data<AppState>) -> impl Responder {
 }
 
 #[get("/opds/authors")]
-async fn root_authors(ctx: web::Data<AppState>) -> impl Responder {
+async fn opds_authors(ctx: AppCtx) -> impl Responder {
     info!("/opds/authors");
     let mut feed;
     if let Ok(api) = ctx.api.lock() {
@@ -148,7 +149,7 @@ async fn root_authors(ctx: web::Data<AppState>) -> impl Responder {
 }
 
 #[get("/opds/authors/mask/{pattern}")]
-async fn root_authors_by_mask(ctx: web::Data<AppState>, args: web::Path<String>) -> impl Responder {
+async fn opds_authors_by_mask(ctx: AppCtx, args: web::Path<String>) -> impl Responder {
     let pattern = args.into_inner();
     info!("/opds/authors/mask/{pattern}");
 
@@ -184,29 +185,31 @@ async fn root_authors_by_mask(ctx: web::Data<AppState>, args: web::Path<String>)
 }
 
 #[get("/opds/author/id/{fid}/{mid}/{lid}")]
-async fn root_author_by_id(args: web::Path<(u32, u32, u32)>) -> impl Responder {
+async fn opds_author_by_id(args: web::Path<(u32, u32, u32)>) -> impl Responder {
     let (fid, mid, lid) = args.into_inner();
     info!("/opds/author/id/{fid}/{mid}/{lid}");
 
-    let uri = "/opds/author";
     let ids = &format!("{fid}/{mid}/{lid}");
     let mut feed = Feed::new("Книги автора");
-    feed.catalog("По сериям", &format!("{uri}/series/{ids}"));
-    feed.catalog("Вне серий", &format!("{uri}/books/nonserie/{ids}"));
-    feed.catalog("По жанрам", &format!("{uri}/books/genre/{ids}"));
-    feed.catalog("По алфавиту", &format!("{uri}/books/alphabet/{ids}"));
-    feed.catalog("По дате", &format!("{uri}/books/added/{ids}"));
+    feed.catalog("Cерии", &format!("/opds/series/author/{ids}"));
+    feed.catalog(
+        "Книги без серий",
+        &format!("/opds/books/author/nonserie/{ids}"),
+    );
+    feed.catalog("Книги жанрам", &format!("/opds/books/author/genre/{ids}"));
+    feed.catalog(
+        "Книги алфавиту",
+        &format!("/opds/books/author/alphabet/{ids}"),
+    );
+    feed.catalog("Книги по дате", &format!("/opds/books/author/added/{ids}"));
 
     feed.format()
 }
 
-#[get("/opds/author/series/{fid}/{mid}/{lid}")]
-async fn root_series_by_author(
-    ctx: web::Data<AppState>,
-    args: web::Path<(u32, u32, u32)>,
-) -> impl Responder {
+#[get("/opds/series/author/{fid}/{mid}/{lid}")]
+async fn opds_series_by_author(ctx: AppCtx, args: web::Path<(u32, u32, u32)>) -> impl Responder {
     let (fid, mid, lid) = args.into_inner();
-    info!("/opds/author/series/{fid}/{mid}/{lid}");
+    info!("/opds/series/author/{fid}/{mid}/{lid}");
 
     let mut feed;
     if let Ok(api) = ctx.api.lock() {
@@ -229,13 +232,13 @@ async fn root_series_by_author(
     feed.format()
 }
 
-#[get("/opds/author/books/nonserie/{fid}/{mid}/{lid}")]
-async fn root_books_by_author_nonserie(
-    ctx: web::Data<AppState>,
+#[get("/opds/books/author/nonserie/{fid}/{mid}/{lid}")]
+async fn opds_books_by_author_nonserie(
+    ctx: AppCtx,
     args: web::Path<(u32, u32, u32)>,
 ) -> impl Responder {
     let (fid, mid, lid) = args.into_inner();
-    info!("/opds/author/books/nonserie/{fid}/{mid}/{lid}");
+    info!("/opds/books/author/nonserie/{fid}/{mid}/{lid}");
 
     let mut feed;
     if let Ok(api) = ctx.api.lock() {
@@ -260,13 +263,10 @@ async fn root_books_by_author_nonserie(
     feed.format()
 }
 
-#[get("/opds/author/books/genre/{genre}")]
-async fn root_books_by_author_and_genre(
-    ctx: web::Data<AppState>,
-    args: web::Path<u32>,
-) -> impl Responder {
+#[get("/opds/books/author/genre/{genre}")]
+async fn opds_books_by_author_and_genre(ctx: AppCtx, args: web::Path<u32>) -> impl Responder {
     let genre = args.into_inner();
-    info!("/opds/author/books/genre/{genre}");
+    info!("/opds/books/author/genre/{genre}");
 
     let feed;
     if let Ok(_api) = ctx.api.lock() {
@@ -278,13 +278,13 @@ async fn root_books_by_author_and_genre(
     feed.format()
 }
 
-#[get("/opds/author/books/alphabet/{fid}/{mid}/{lid}")]
-async fn root_books_by_author_alphabet(
-    ctx: web::Data<AppState>,
+#[get("/opds/books/author/alphabet/{fid}/{mid}/{lid}")]
+async fn opds_books_by_author_alphabet(
+    ctx: AppCtx,
     args: web::Path<(u32, u32, u32)>,
 ) -> impl Responder {
     let (fid, mid, lid) = args.into_inner();
-    info!("/opds/author/books/alphabet/{fid}/{mid}/{lid}");
+    info!("/opds/books/author/alphabet/{fid}/{mid}/{lid}");
 
     let mut feed;
     if let Ok(api) = ctx.api.lock() {
@@ -307,13 +307,13 @@ async fn root_books_by_author_alphabet(
     feed.format()
 }
 
-#[get("/opds/author/books/added/{fid}/{mid}/{lid}")]
-async fn root_books_by_author_datesort(
-    ctx: web::Data<AppState>,
+#[get("/opds/books/author/added/{fid}/{mid}/{lid}")]
+async fn opds_books_by_author_datesort(
+    ctx: AppCtx,
     args: web::Path<(u32, u32, u32)>,
 ) -> impl Responder {
     let (fid, mid, lid) = args.into_inner();
-    info!("/opds/author/books/added/{fid}/{mid}/{lid}");
+    info!("/opds/books/author/added/{fid}/{mid}/{lid}");
 
     let mut feed;
     if let Ok(api) = ctx.api.lock() {
@@ -338,7 +338,7 @@ async fn root_books_by_author_datesort(
 }
 
 #[get("/opds/series")]
-async fn root_series(ctx: web::Data<AppState>) -> impl Responder {
+async fn opds_series(ctx: AppCtx) -> impl Responder {
     info!("/opds/series");
 
     let mut feed;
@@ -360,7 +360,7 @@ async fn root_series(ctx: web::Data<AppState>) -> impl Responder {
 }
 
 #[get("/opds/series/mask/{pattern}")]
-async fn root_series_by_mask(ctx: web::Data<AppState>, args: web::Path<String>) -> impl Responder {
+async fn opds_series_by_mask(ctx: AppCtx, args: web::Path<String>) -> impl Responder {
     let pattern = args.into_inner();
     info!("/opds/series/mask/{pattern}");
 
@@ -375,7 +375,7 @@ async fn root_series_by_mask(ctx: web::Data<AppState>, args: web::Path<String>) 
             let series = api.series_by_serie_name(&name).map_err(OpdsError)?;
             for serie in series.iter() {
                 let title = format!("[{serie}]");
-                let link = format!("/opds/serie/id/{}", serie.id);
+                let link = format!("/opds/books/serie/id/{}", serie.id);
                 feed.catalog(title, link);
             }
         }
@@ -392,10 +392,10 @@ async fn root_series_by_mask(ctx: web::Data<AppState>, args: web::Path<String>) 
     feed.format()
 }
 
-#[get("/opds/serie/id/{id}")]
-async fn root_books_by_serie(ctx: web::Data<AppState>, args: web::Path<u32>) -> impl Responder {
+#[get("/opds/books/serie/id/{id}")]
+async fn opds_books_by_serie(ctx: AppCtx, args: web::Path<u32>) -> impl Responder {
     let id = args.into_inner();
-    info!("/opds/serie/id/{id}");
+    info!("/opds/books/serie/id/{id}");
 
     let mut feed;
     if let Ok(api) = ctx.api.lock() {
@@ -414,7 +414,7 @@ async fn root_books_by_serie(ctx: web::Data<AppState>, args: web::Path<u32>) -> 
 }
 
 #[get("/opds/genres")]
-async fn root_genres(ctx: web::Data<AppState>) -> impl Responder {
+async fn opds_genres(ctx: AppCtx) -> impl Responder {
     info!("/opds/genres");
 
     let mut feed;
@@ -434,7 +434,7 @@ async fn root_genres(ctx: web::Data<AppState>) -> impl Responder {
 }
 
 #[get("/opds/genres/meta/{meta}")]
-async fn root_genres_by_meta(ctx: web::Data<AppState>, args: web::Path<String>) -> impl Responder {
+async fn opds_genres_by_meta(ctx: AppCtx, args: web::Path<String>) -> impl Responder {
     let meta = args.into_inner();
     info!("/opds/genres/meta/{meta}");
 
@@ -455,7 +455,7 @@ async fn root_genres_by_meta(ctx: web::Data<AppState>, args: web::Path<String>) 
 }
 
 #[get("/opds/genre/id/{gid}")]
-async fn root_genre_by_id(path: web::Path<u32>) -> impl Responder {
+async fn opds_genre_by_id(path: web::Path<u32>) -> impl Responder {
     let gid = path.into_inner();
     info!("/opds/genre/id/{gid}");
 
@@ -476,7 +476,7 @@ async fn root_genre_by_id(path: web::Path<u32>) -> impl Responder {
 }
 
 #[get("/opds/authors/genre/{gid}")]
-async fn root_authors_by_genre(ctx: web::Data<AppState>, args: web::Path<u32>) -> impl Responder {
+async fn opds_authors_by_genre(ctx: AppCtx, args: web::Path<u32>) -> impl Responder {
     let gid = args.into_inner();
     info!("/opds/authors/series/{gid}");
 
@@ -499,7 +499,7 @@ async fn root_authors_by_genre(ctx: web::Data<AppState>, args: web::Path<u32>) -
 }
 
 #[get("/opds/series/genre/{gid}")]
-async fn root_series_by_genre(ctx: web::Data<AppState>, args: web::Path<u32>) -> impl Responder {
+async fn opds_series_by_genre(ctx: AppCtx, args: web::Path<u32>) -> impl Responder {
     let gid = args.into_inner();
     info!("/opds/series/genre/{gid}");
 
@@ -510,7 +510,7 @@ async fn root_series_by_genre(ctx: web::Data<AppState>, args: web::Path<u32>) ->
         let series = api.series_by_genre_id(gid).map_err(OpdsError)?;
         for serie in series.iter() {
             let title = format!("{serie}");
-            let link = format!("/opds/serie/id/{}", serie.id);
+            let link = format!("/opds/books/serie/id/{}", serie.id);
             feed.catalog(title, link);
         }
     } else {
@@ -521,8 +521,8 @@ async fn root_series_by_genre(ctx: web::Data<AppState>, args: web::Path<u32>) ->
 }
 
 #[get("/opds/books/genre/id/{gid}/year/{year}/month/{month}")]
-async fn root_books_by_genre_and_date(
-    ctx: web::Data<AppState>,
+async fn opds_books_by_genre_year_month(
+    ctx: AppCtx,
     args: web::Path<(u32, u16, u8)>,
 ) -> impl Responder {
     let (gid, year, month) = args.into_inner();
@@ -532,7 +532,9 @@ async fn root_books_by_genre_and_date(
     if let Ok(api) = ctx.api.lock() {
         feed = Feed::new("Книги в серии по месяцам");
         let date = format!("{}-{:02}-%", year, month);
-        let books = api.books_by_genre_id_and_date(gid, date).map_err(OpdsError)?;
+        let books = api
+            .books_by_genre_id_and_date(gid, date)
+            .map_err(OpdsError)?;
         for book in books.iter() {
             let title = format!("{book}");
             let link = format!("/opds/book/id/{}", book.id);
@@ -546,19 +548,18 @@ async fn root_books_by_genre_and_date(
 }
 
 // #[get("/opds/favorites")]
-// async fn root_opds_favorite_authors(ctx: web::Data<AppState>) -> impl Responder {
+// async fn opds_opds_favorite_authors(ctx: AppCtx) -> impl Responder {
 //     info!("/opds/favorites");
 
 //     let books = ctx.catalog.lock().unwrap();
 //     let stats = ctx.statistic.lock().unwrap();
-//     let feed = impls::root_opds_favorite_authors(&books, &stats).await;
+//     let feed = impls::opds_opds_favorite_authors(&books, &stats).await;
 //     opds::handle_feed(feed)
 // }
 
-
 #[get("/opds/serie/books/id/{fid}/{mid}/{lid}/{sid}")]
-async fn root_books_by_author_and_serie(
-    ctx: web::Data<AppState>,
+async fn opds_books_by_author_and_serie(
+    ctx: AppCtx,
     args: web::Path<(u32, u32, u32, u32)>,
 ) -> impl Responder {
     let (fid, mid, lid, sid) = args.into_inner();
@@ -588,10 +589,7 @@ async fn root_books_by_author_and_serie(
 }
 
 #[get("/opds/book/id/{id}")]
-async fn root_book_upload(
-    ctx: web::Data<AppState>,
-    args: web::Path<u32>,
-) -> std::io::Result<NamedFile> {
+async fn opds_book_upload(ctx: AppCtx, args: web::Path<u32>) -> std::io::Result<NamedFile> {
     let id = args.into_inner();
     info!("/opds/book/id/{id})");
 
