@@ -110,8 +110,8 @@ async fn main() -> anyhow::Result<()> {
             .service(opds_books_by_serie)
             .service(opds_books_by_genre_year_month)
             .service(opds_book_upload)
-        // Favorite Books
-        // .service(opds_opds_favorite_authors)
+            // Favorite Books
+            .service(opds_authors_favorits)
     })
     .bind((address.as_str(), port))?
     .run()
@@ -127,7 +127,9 @@ async fn opds() -> impl Responder {
     feed.catalog("Поиск по сериям", "/opds/series");
     feed.catalog("Поиск по жанрам", "/opds/genres");
     feed.catalog("Поиск по наименованиям", "/opds/titles");
-    feed.catalog("Любимые авторы ", "/opds/favorites");
+    feed.catalog("Любимые авторы 10 дей", "/opds/authors/favorits/days/10");
+    feed.catalog("Любимые авторы 30 дей ", "/opds/authors/favorits/days/30");
+    feed.catalog("Любимые авторы 90 дей ", "/opds/authors/favorits/days/90");
     feed.format()
 }
 
@@ -564,15 +566,36 @@ async fn opds_books_by_genre_year_month(
     feed.format()
 }
 
-// #[get("/opds/favorites")]
-// async fn opds_opds_favorite_authors(ctx: AppCtx) -> impl Responder {
-//     info!("/opds/favorites");
+#[get("/opds/authors/favorits/days/{days}")]
+async fn opds_authors_favorits(ctx: AppCtx, args: web::Path<u8>,) -> impl Responder {
+    let days = args.into_inner();
+    info!("/opds/authors/favorits/days/{days}");
 
-//     let books = ctx.catalog.lock().unwrap();
-//     let stats = ctx.statistic.lock().unwrap();
-//     let feed = impls::opds_opds_favorite_authors(&books, &stats).await;
-//     opds::handle_feed(feed)
-// }
+    let mut feed;
+    let ids;
+    if let Ok(stat) = ctx.stat.lock() {
+        ids = stat.load_last(days).map_err(OpdsError)?;
+    }else {
+        ids = vec![];
+    }
+
+    if let Ok(api) = ctx.api.lock() {
+        feed = Feed::new("Авторы за {days} дней");
+        feed.catalog("[Home]", "/opds");
+        let authors = api.authors_by_books_ids(ids).map_err(OpdsError)?;
+        for author in authors.into_iter() {
+            let title = format!("{author}");
+            let link = format!(
+                "/opds/author/id/{}/{}/{}",
+                author.first_name.id, author.middle_name.id, author.last_name.id
+            );
+            feed.catalog(title, link);
+        }
+    } else {
+        feed = Feed::new("Can't lock API");
+    }
+    feed.format()
+}
 
 #[get("/opds/serie/books/id/{fid}/{mid}/{lid}/{sid}")]
 async fn opds_books_by_author_and_serie(

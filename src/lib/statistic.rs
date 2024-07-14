@@ -20,7 +20,7 @@ impl StatisticApi {
         Ok(())
     }
 
-    pub fn load_last(&self, days: u32) -> anyhow::Result<Vec<u32>> {
+    pub fn load_last(&self, days: u8) -> anyhow::Result<Vec<u32>> {
         let days = format!("-{days} days");
 
         let sql = "SELECT book_id AS id FROM downloads WHERE DATE(downloaded) >= DATE('now', $1);";
