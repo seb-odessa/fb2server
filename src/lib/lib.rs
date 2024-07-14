@@ -11,7 +11,7 @@ pub mod utils;
 pub fn search_by_mask<F, S>(mask: S, fetcher: F) -> anyhow::Result<(Vec<String>, Vec<String>)>
 where
     F: Fn(&String) -> anyhow::Result<Vec<String>>,
-    S: Into<String>
+    S: Into<String>,
 {
     let mut mask = mask.into();
     let mut complete = Vec::new();
@@ -20,13 +20,20 @@ where
     loop {
         let patterns = fetcher(&mask)?;
         let (mut exact, mut tail) = patterns.into_iter().partition(|curr| mask.eq(curr));
-
         complete.append(&mut exact);
 
         if tail.is_empty() {
             break;
         } else if 1 == tail.len() {
             std::mem::swap(&mut mask, &mut tail[0]);
+        } else if 2 == tail.len() {
+            let are_equal = tail[0].to_lowercase() == tail[1].to_lowercase();
+            if are_equal {
+                std::mem::swap(&mut mask, &mut tail[0]);
+            } else {
+                incomplete.append(&mut tail);
+                break;
+            }
         } else {
             incomplete.append(&mut tail);
             break;
@@ -47,6 +54,10 @@ mod tests {
             "BB" => vec!["BBB"],
             "BBB" => vec!["BBBB"],
             "BBBB" => vec!["BBBB"],
+            "C" => vec!["CC", "cc"],
+            "CC" => vec!["CCC", "ccc"],
+            "CCC" => vec!["CCC", "ccc"],
+            "ccc" => vec!["ccc"],
             _ => vec![],
         };
         if out.is_empty() {
@@ -76,6 +87,18 @@ mod tests {
         let (exact, tail) = search_by_mask("B", fetcher)?;
         assert_eq!(
             vec!["B", "BBBB"],
+            exact.iter().map(|a| a.as_str()).collect::<Vec<_>>()
+        );
+        assert_eq!(empty, tail.iter().map(|a| a.as_str()).collect::<Vec<_>>());
+        Ok(())
+    }
+
+    #[test]
+    fn test_c() -> anyhow::Result<()> {
+        let empty: Vec<&str> = Vec::new();
+        let (exact, tail) = search_by_mask("C", fetcher)?;
+        assert_eq!(
+            vec!["CCC", "ccc"],
             exact.iter().map(|a| a.as_str()).collect::<Vec<_>>()
         );
         assert_eq!(empty, tail.iter().map(|a| a.as_str()).collect::<Vec<_>>());
