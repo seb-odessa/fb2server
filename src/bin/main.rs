@@ -1,5 +1,6 @@
 use actix_files::NamedFile;
 use actix_web::{get, web, App, HttpResponse, HttpServer, Responder, ResponseError};
+use chrono::{Datelike, Duration, Utc};
 use log::{error, info, warn};
 use percent_encoding::{utf8_percent_encode, NON_ALPHANUMERIC};
 
@@ -83,28 +84,29 @@ async fn main() -> anyhow::Result<()> {
             // Books by Authors
             .service(root_authors)
             .service(root_authors_by_mask)
+            .service(root_authors_by_genre)
             .service(root_author_by_id)
-            .service(root_author_series)
             // Books by Series
             .service(root_series)
             .service(root_series_by_mask)
+            .service(root_series_by_author)
+            .service(root_series_by_genre)
             // Books by Genres
             .service(root_genres)
             .service(root_genres_by_meta)
-            .service(root_genre_root)
-            // .service(root_opds_genres_series)
-            // .service(root_opds_genres_authors)
-            // .service(root_opds_genres_dates)
-            // // Favorite Books
-            // .service(root_opds_favorite_authors)
-            // // Books
+            .service(root_genre_by_id)
+            // Books
             .service(root_books_by_author_and_serie)
             .service(root_books_by_author_nonserie)
             .service(root_books_by_author_and_genre)
             .service(root_books_by_author_alphabet)
             .service(root_books_by_author_datesort)
             .service(root_books_by_serie)
+            .service(root_books_by_genre_and_date)
             .service(root_book_upload)
+            // Favorite Books
+            // .service(root_opds_favorite_authors)
+
     })
     .bind((address.as_str(), port))?
     .run()
@@ -199,7 +201,7 @@ async fn root_author_by_id(args: web::Path<(u32, u32, u32)>) -> impl Responder {
 }
 
 #[get("/opds/author/series/{fid}/{mid}/{lid}")]
-async fn root_author_series(
+async fn root_series_by_author(
     ctx: web::Data<AppState>,
     args: web::Path<(u32, u32, u32)>,
 ) -> impl Responder {
@@ -441,9 +443,9 @@ async fn root_genres_by_meta(ctx: web::Data<AppState>, args: web::Path<String>) 
         feed = Feed::new("Книги по поджанрам");
         let genres = api.genres_by_meta(&meta).map_err(OpdsError)?;
         for genre in genres.into_iter() {
-            let encoded = utf8_percent_encode(genre.as_str(), NON_ALPHANUMERIC).to_string();
-            let link = format!("/opds/genre/{encoded}");
-            feed.catalog(genre, link);
+            let title = genre.value;
+            let link = format!("/opds/genre/id/{}", genre.id);
+            feed.catalog(title, link);
         }
     } else {
         feed = Feed::new("Can't lock API");
@@ -452,56 +454,96 @@ async fn root_genres_by_meta(ctx: web::Data<AppState>, args: web::Path<String>) 
     feed.format()
 }
 
-#[get("/opds/genre/{genre}")]
-async fn root_genre_root(path: web::Path<String>) -> impl Responder {
-    let genre = path.into_inner();
-    info!("/opds/genre/{genre}");
+#[get("/opds/genre/id/{gid}")]
+async fn root_genre_by_id(path: web::Path<u32>) -> impl Responder {
+    let gid = path.into_inner();
+    info!("/opds/genre/id/{gid}");
 
-    let mut feed = Feed::new(format!("Книги '{genre}'"));
-    feed.catalog("По авторам", &format!("/opds/genre/authors/{genre}"));
-    feed.catalog("По сериям", &format!("/opds/genre/series/{genre}"));
-    feed.catalog("Последние 45 книг", &format!("/opds/genre/dates/{genre}"));
+    let mut feed = Feed::new(format!("Книги по жанру"));
+    feed.catalog("Список авторов", &format!("/opds/authors/genre/{gid}"));
+    feed.catalog("Список серий", &format!("/opds/series/genre/{gid}"));
+
+    let today = Utc::now().date_naive();
+    for i in 0..12 {
+        let date = today - Duration::days(30 * i);
+        let year = date.year();
+        let month = date.month();
+        let title = format!("Книги за {year} {} ", date.format("%B"));
+        let link = format!("/opds/books/genre/id/{gid}/year/{year}/month/{month}");
+        feed.catalog(title, link);
+    }
     feed.format()
 }
 
-// #[get("/opds/genre/series/{genre}")]
-// async fn root_opds_genres_series(
-//     ctx: web::Data<AppState>,
-//     path: web::Path<String>,
-// ) -> impl Responder {
-//     let genre = path.into_inner();
-//     info!("/opds/genre/series/{genre}");
+#[get("/opds/authors/genre/{gid}")]
+async fn root_authors_by_genre(ctx: web::Data<AppState>, args: web::Path<u32>) -> impl Responder {
+    let gid = args.into_inner();
+    info!("/opds/authors/series/{gid}");
 
-//     let catalog = ctx.catalog.lock().unwrap();
-//     let feed = impls::root_opds_genres_series(&catalog, &genre).await;
-//     opds::handle_feed(feed)
-// }
+    let mut feed;
+    if let Ok(api) = ctx.api.lock() {
+        feed = Feed::new("Авторы по жанру");
+        let authors = api.authors_by_genre_id(gid).map_err(OpdsError)?;
+        for author in authors.into_iter() {
+            let title = format!("{author}");
+            let link = format!(
+                "/opds/author/id/{}/{}/{}",
+                author.first_name.id, author.middle_name.id, author.last_name.id
+            );
+            feed.catalog(title, link);
+        }
+    } else {
+        feed = Feed::new("Can't lock API");
+    }
+    feed.format()
+}
 
-// #[get("/opds/genre/authors/{genre}")]
-// async fn root_opds_genres_authors(
-//     ctx: web::Data<AppState>,
-//     path: web::Path<String>,
-// ) -> impl Responder {
-//     let genre = path.into_inner();
-//     info!("/opds/genre/authors/{genre}");
+#[get("/opds/series/genre/{gid}")]
+async fn root_series_by_genre(ctx: web::Data<AppState>, args: web::Path<u32>) -> impl Responder {
+    let gid = args.into_inner();
+    info!("/opds/series/genre/{gid}");
 
-//     let catalog = ctx.catalog.lock().unwrap();
-//     let feed = impls::root_opds_genres_authors(&catalog, &genre).await;
-//     opds::handle_feed(feed)
-// }
+    let mut feed;
+    if let Ok(api) = ctx.api.lock() {
+        feed = Feed::new("Серии по жанру");
 
-// #[get("/opds/genre/dates/{genre}")]
-// async fn root_opds_genres_dates(
-//     ctx: web::Data<AppState>,
-//     path: web::Path<String>,
-// ) -> impl Responder {
-//     let genre = path.into_inner();
-//     info!("/opds/genre/dates/{genre}");
+        let series = api.series_by_genre_id(gid).map_err(OpdsError)?;
+        for serie in series.iter() {
+            let title = format!("{serie}");
+            let link = format!("/opds/serie/id/{}", serie.id);
+            feed.catalog(title, link);
+        }
+    } else {
+        feed = Feed::new("Can't lock API");
+    }
 
-//     let catalog = ctx.catalog.lock().unwrap();
-//     let feed = impls::root_opds_genres_dates(&catalog, &genre).await;
-//     opds::handle_feed(feed)
-// }
+    feed.format()
+}
+
+#[get("/opds/books/genre/id/{gid}/year/{year}/month/{month}")]
+async fn root_books_by_genre_and_date(
+    ctx: web::Data<AppState>,
+    args: web::Path<(u32, u16, u8)>,
+) -> impl Responder {
+    let (gid, year, month) = args.into_inner();
+    info!("/opds/books/genre/id/{gid}/year/{year}/month/{month}");
+
+    let mut feed;
+    if let Ok(api) = ctx.api.lock() {
+        feed = Feed::new("Книги в серии по месяцам");
+        let date = format!("{}-{:02}-%", year, month);
+        let books = api.books_by_genre_id_and_date(gid, date).map_err(OpdsError)?;
+        for book in books.iter() {
+            let title = format!("{book}");
+            let link = format!("/opds/book/id/{}", book.id);
+            feed.book(title, link);
+        }
+    } else {
+        feed = Feed::new("Can't lock API");
+    }
+
+    feed.format()
+}
 
 // #[get("/opds/favorites")]
 // async fn root_opds_favorite_authors(ctx: web::Data<AppState>) -> impl Responder {
@@ -513,33 +555,6 @@ async fn root_genre_root(path: web::Path<String>) -> impl Responder {
 //     opds::handle_feed(feed)
 // }
 
-// #[get("/opds/author/nonserie/books/{fid}/{mid}/{lid}")]
-// async fn root_author_books_nonserie(
-//     ctx: web::Data<AppState>,
-//     path: web::Path<(u32, u32, u32)>,
-// ) -> impl Responder {
-//     let (fid, mid, lid) = path.into_inner();
-//     info!("/opds/author/nonserie/books/{fid}/{mid}/{lid}");
-
-//     let catalog = ctx.catalog.lock().unwrap();
-//     let feed =
-//         impls::root_opds_author_books(&catalog, (fid, mid, lid), authors::Sort::NoSerie).await;
-//     opds::handle_feed(feed)
-// }
-
-// #[get("/opds/author/alphabet/books/{fid}/{mid}/{lid}")]
-// async fn root_author_books_alphabet(
-//     ctx: web::Data<AppState>,
-//     path: web::Path<(u32, u32, u32)>,
-// ) -> impl Responder {
-//     let (fid, mid, lid) = path.into_inner();
-//     info!("/opds/author/alphabet/books/{fid}/{mid}/{lid}");
-
-//     let catalog = ctx.catalog.lock().unwrap();
-//     let feed =
-//         impls::root_opds_author_books(&catalog, (fid, mid, lid), authors::Sort::Alphabet).await;
-//     opds::handle_feed(feed)
-// }
 
 #[get("/opds/serie/books/id/{fid}/{mid}/{lid}/{sid}")]
 async fn root_books_by_author_and_serie(
@@ -621,25 +636,3 @@ fn get_env<T: Into<String> + Display>(name: T, default: T) -> String {
         })
         .expect(&format!("Can't configure {}", name))
 }
-
-// fn read_params() -> (String, u16, String, String, PathBuf) {
-//     let addr = get_env("FB2S_ADDRESS", DEFAULT_ADDRESS);
-//     info!("FB2S_ADDRESS: {addr}");
-
-//     let port = get_env("FB2S_PORT", &format!("{DEFAULT_PORT}"))
-//         .as_str()
-//         .parse::<u16>()
-//         .unwrap_or(DEFAULT_PORT);
-//     info!("FB2S_PORT: {port}");
-
-//     let database = get_env("FB2S_DATABASE", DEFAULT_DATABASE);
-//     info!("FB2S_DATABASE: {database}");
-
-//     let statistic = get_env("FB2S_STATISTIC", DEFAULT_STATISTIC);
-//     info!("FB2S_STATISTIC: {statistic}");
-
-//     let library = PathBuf::from(get_env("FB2S_LIBRARY", DEFAULT_LIBRARY));
-//     info!("FB2S_LIBRARY: {}", library.display());
-
-//     return (addr, port, database, statistic, library);
-// }
