@@ -3,10 +3,9 @@ extern crate opds_db_api;
 #[macro_use]
 extern crate lazy_static;
 
-// pub mod database;
-// pub mod impls;
 pub mod opds;
 pub mod utils;
+pub mod statistic;
 
 pub fn search_by_mask<F, S>(mask: S, fetcher: F) -> anyhow::Result<(Vec<String>, Vec<String>)>
 where

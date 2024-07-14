@@ -5,6 +5,7 @@ use log::{error, info, warn};
 use percent_encoding::{utf8_percent_encode, NON_ALPHANUMERIC};
 
 use lib::opds::Feed;
+use lib::statistic::StatisticApi;
 use lib::utils;
 use opds_db_api::OpdsApi;
 
@@ -25,12 +26,14 @@ type AppCtx = web::Data<AppState>;
 
 struct AppState {
     api: Mutex<OpdsApi>,
+    stat: Mutex<StatisticApi>,
     storage: PathBuf,
 }
 impl AppState {
-    pub fn new(api: OpdsApi, storage: PathBuf) -> Self {
+    pub fn new(api: OpdsApi, stat: StatisticApi, storage: PathBuf) -> Self {
         Self {
             api: Mutex::new(api),
+            stat: Mutex::new(stat),
             storage: storage,
         }
     }
@@ -75,8 +78,9 @@ async fn main() -> anyhow::Result<()> {
     info!("FB2S_LIBRARY: {}", storage.display());
 
     let api = OpdsApi::try_from(&database)?;
+    let stat = StatisticApi::try_from(&statistic)?;
 
-    let ctx = web::Data::new(AppState::new(api, storage));
+    let ctx = web::Data::new(AppState::new(api, stat, storage));
 
     info!("OPDS Server will ready at http://{address}:{port}/opds");
     HttpServer::new(move || {
@@ -609,13 +613,13 @@ async fn opds_book_upload(ctx: AppCtx, args: web::Path<u32>) -> std::io::Result<
 
     match utils::extract_book(ctx.storage.clone(), id) {
         Ok(path) => {
-            // let catalog = ctx.statistic.lock().unwrap();
+            let stat = ctx.stat.lock().unwrap();
 
-            // if let Err(err) = database::insert_book(&catalog, id).await {
-            //     let msg = format!("{err}");
-            //     error!("{}", msg);
-            //     return Err(io::Error::new(io::ErrorKind::Other, msg));
-            // }
+            if let Err(err) = stat.save(id) {
+                let msg = format!("{err}");
+                error!("{}", msg);
+                return Err(io::Error::new(io::ErrorKind::Other, msg));
+            }
             match actix_files::NamedFile::open_async(path).await {
                 Ok(file) => {
                     info!("Uploading {} B", file.metadata().size());
