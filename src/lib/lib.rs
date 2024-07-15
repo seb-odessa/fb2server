@@ -1,7 +1,6 @@
-#[macro_use]
-extern crate lazy_static;
+extern crate opds_db_api;
 
-pub mod database;
-pub mod impls;
+pub mod books;
 pub mod opds;
-pub mod utils;
+pub mod search;
+pub mod statistic;

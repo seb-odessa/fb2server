@@ -17,5 +17,5 @@ build:
 	docker run --platform $(PLATFORM) --rm -v $(VOLUME) -v  $(CURDIR):/destination $(IMAGE) cp $(BINARY_PATH) /destination
 
 clean:
-	docker image rm $(IMAGE)
-	docker volume rm $(VOLUME_NAME)
+	docker image rm -f $(IMAGE)
+	docker volume rm -f $(VOLUME_NAME)
