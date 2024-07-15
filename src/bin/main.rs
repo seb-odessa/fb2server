@@ -4,9 +4,10 @@ use chrono::{Datelike, Duration, Utc};
 use log::{error, info, warn};
 use percent_encoding::{utf8_percent_encode, NON_ALPHANUMERIC};
 
+use lib::books;
+use lib::search;
 use lib::opds::Feed;
 use lib::statistic::StatisticApi;
-use lib::utils;
 use opds_db_api::OpdsApi;
 
 use std::env::VarError;
@@ -166,7 +167,7 @@ async fn opds_authors_by_mask(ctx: AppCtx, args: web::Path<String>) -> impl Resp
         feed.catalog("[Home]", "/opds");
 
         let fetcher = |s: &String| api.authors_next_char_by_prefix(s);
-        let (exact, tail) = lib::search_by_mask(&pattern, fetcher).map_err(OpdsError)?;
+        let (exact, tail) = search::search_by_mask(&pattern, fetcher).map_err(OpdsError)?;
 
         for name in exact.into_iter() {
             let authors = api.authors_by_last_name(&name).map_err(OpdsError)?;
@@ -383,7 +384,7 @@ async fn opds_series_by_mask(ctx: AppCtx, args: web::Path<String>) -> impl Respo
         feed = Feed::new("Поиск книг по сериям");
         feed.catalog("[Home]", "/opds");
         let fetcher = |s: &String| api.series_next_char_by_prefix(s);
-        let (exact, tail) = lib::search_by_mask(&pattern, fetcher).map_err(OpdsError)?;
+        let (exact, tail) = search::search_by_mask(&pattern, fetcher).map_err(OpdsError)?;
 
         for name in exact.into_iter() {
             let series = api.series_by_serie_name(&name).map_err(OpdsError)?;
@@ -634,7 +635,7 @@ async fn opds_book_upload(ctx: AppCtx, args: web::Path<u32>) -> std::io::Result<
     let id = args.into_inner();
     info!("/opds/book/id/{id})");
 
-    match utils::extract_book(ctx.storage.clone(), id) {
+    match books::extract_book(ctx.storage.clone(), id) {
         Ok(path) => {
             let stat = ctx.stat.lock().unwrap();
 
