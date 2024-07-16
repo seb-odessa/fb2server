@@ -26,4 +26,4 @@ itertools = "0.13"
 futures = "0.3"
 percent-encoding = "2.3"
 rusqlite = { version = "0.31.0"}
-opds_db_api = { git = "https://github.com/seb-odessa/opds_db_api.git", branch = "main", package = "opds_db_api" }
+opds_api = { git = "https://github.com/seb-odessa/opds_api.git", branch = "main", package = "opds_api" }

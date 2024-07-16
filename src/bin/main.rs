@@ -8,7 +8,7 @@ use lib::books;
 use lib::search;
 use lib::opds::Feed;
 use lib::statistic::StatisticApi;
-use opds_db_api::OpdsApi;
+use opds_api::OpdsApi;
 
 use std::env::VarError;
 use std::fmt::{self, Display};

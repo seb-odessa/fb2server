@@ -1,4 +1,4 @@
-extern crate opds_db_api;
+extern crate opds_api;
 
 pub mod books;
 pub mod opds;
